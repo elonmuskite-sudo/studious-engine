@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ShieldCheckIcon } from '@heroicons/react/24/solid'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
 import { useTheme } from '../hooks/useTheme'
 import AuthShell from '../components/AuthShell'
@@ -8,6 +9,7 @@ import AuthShell from '../components/AuthShell'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { theme } = useTheme()
@@ -88,15 +90,27 @@ export default function Login() {
             </div>
             <div>
               <label className={`mb-2 block text-sm font-medium ${themeClasses.muted}`}>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${themeClasses.input}`}
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={passwordVisible ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className={`w-full rounded-xl border px-4 py-3 pr-12 text-sm outline-none transition ${themeClasses.input}`}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                  aria-pressed={passwordVisible}
+                  title={passwordVisible ? 'Hide password' : 'Show password'}
+                  className={`absolute inset-y-0 right-0 flex w-12 items-center justify-center ${themeClasses.muted}`}
+                >
+                  {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
             {error && <p className="text-sm text-rose-400">{error}</p>}
             <button
