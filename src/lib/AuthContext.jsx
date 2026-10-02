@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import { databases, isAppwriteDataAvailable, isAdminRole, APPWRITE_DATABASE_ID, ID, Query, getAppwriteConfig } from './appwrite'
 import { ADMIN_DEFAULTS } from './appwriteSchema'
+import { requestPasswordReset as requestResetToken, resetPasswordWithToken as resetStoredPassword } from './authReset'
+import { supabase, isSupabaseConfigured, findMemberBySupabaseNexusId, createSupabaseMember, updateSupabaseMemberByNexusId } from './supabase'
 
 const AuthContext = createContext()
 const SESSION_STORAGE_KEY = 'nexus-chat-session'
@@ -135,6 +137,18 @@ export function AuthProvider({ children }) {
             }
           }
 
+          if (isSupabaseConfigured() && storedNexusId) {
+            try {
+              const supabaseUser = await findMemberBySupabaseNexusId(String(storedNexusId))
+              if (supabaseUser) {
+                setUser(normalizeUser(supabaseUser))
+                setLoading(false)
+                return
+              }
+            } catch {
+            }
+          }
+
           setUser(normalizeUser(parsed))
           setLoading(false)
           return
@@ -189,7 +203,37 @@ export function AuthProvider({ children }) {
             return { user: sessionUser, nexusId: sessionUser.nexusId }
           }
         }
+
+        if (isSupabaseConfigured() && supabase) {
+          try {
+            const supabaseUser = await findMemberBySupabaseNexusId(normalizedId)
+            if (supabaseUser && String(password || '').trim() === String(supabaseUser.password || '').trim()) {
+              const sessionUser = normalizeUser(supabaseUser)
+              localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionUser))
+              setUser(sessionUser)
+              return { user: sessionUser, nexusId: sessionUser.nexusId }
+            }
+          } catch {
+          }
+        }
+
         throw err
+      }
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const supabaseUser = await findMemberBySupabaseNexusId(normalizedId)
+        if (supabaseUser) {
+          if (String(password || '').trim() !== String(supabaseUser.password || '').trim()) {
+            throw new Error('Incorrect password for this Nexus number.')
+          }
+          const sessionUser = normalizeUser(supabaseUser)
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionUser))
+          setUser(sessionUser)
+          return { user: sessionUser, nexusId: sessionUser.nexusId }
+        }
+      } catch {
       }
     }
 
@@ -263,13 +307,34 @@ export function AuthProvider({ children }) {
         setUser(sessionUser)
         return { user: sessionUser, nexusId, password: generatedPassword }
       } catch {
-        const nextUsers = [localUser, ...storedUsers]
-        writeStoredUsers(nextUsers)
-        const sessionUser = normalizeUser(localUser)
-        sessionUser.nexusIdDisplay = formatNexusIdForDisplay(sessionUser.nexusId)
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionUser))
-        setUser(sessionUser)
-        return { user: sessionUser, nexusId, password: generatedPassword }
+        // fall through to Supabase/local fallback below
+      }
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const data = await createSupabaseMember({
+          member_id: nexusId,
+          first_name: normalizedFirstName,
+          last_name: normalizedLastName,
+          full_name: fullName,
+          password: generatedPassword,
+          email: null,
+          email_verified: false,
+          role: 'user',
+          avatar_url: null,
+          created_at: createdAt,
+        })
+
+        if (data) {
+          const sessionUser = normalizeUser(data)
+          sessionUser.nexusIdDisplay = formatNexusIdForDisplay(sessionUser.nexusId)
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionUser))
+          setUser(sessionUser)
+          return { user: sessionUser, nexusId, password: generatedPassword }
+        }
+      } catch {
+        // fall back to local storage below
       }
     }
 
@@ -323,7 +388,53 @@ export function AuthProvider({ children }) {
         console.error('Appwrite profile update failed', err)
       }
     }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await updateSupabaseMemberByNexusId(user.nexusId, {
+          first_name: updates.firstName ?? user.firstName,
+          last_name: updates.lastName ?? user.lastName,
+          full_name: updates.fullName ?? user.fullName,
+          avatar_url: updates.avatarUrl ?? user.avatarUrl,
+        })
+      } catch (err) {
+        console.error('Supabase profile update failed', err)
+      }
+    }
   }, [user])
+
+  const requestPasswordReset = useCallback(async (identifier) => {
+    return requestResetToken(identifier)
+  }, [])
+
+  const resetPassword = useCallback(async (token, newPassword) => {
+    const result = resetStoredPassword(token, newPassword)
+
+    if (isAppwriteDataAvailable() && databases) {
+      try {
+        const member = await findMemberByNexusId(result.nexusId)
+        if (member) {
+          await databases.updateDocument(APPWRITE_DATABASE_ID, 'members', member.$id, {
+            password: String(newPassword || '').trim(),
+          })
+        }
+      } catch (err) {
+        console.warn('Appwrite password update failed', err)
+      }
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await updateSupabaseMemberByNexusId(result.nexusId, {
+          password: String(newPassword || '').trim(),
+        })
+      } catch (err) {
+        console.warn('Supabase password update failed', err)
+      }
+    }
+
+    return result
+  }, [])
 
   const value = useMemo(() => ({
     user,
@@ -331,8 +442,10 @@ export function AuthProvider({ children }) {
     login,
     logout,
     register,
-    updateProfile
-  }), [user, loading, login, logout, register, updateProfile])
+    updateProfile,
+    requestPasswordReset,
+    resetPassword,
+  }), [user, loading, login, logout, register, updateProfile, requestPasswordReset, resetPassword])
 
   return (
     <AuthContext.Provider value={value}>

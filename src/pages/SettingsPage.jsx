@@ -158,7 +158,11 @@ function SchemaSettings() {
 
         <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm">
           <p className="font-semibold text-foreground">Supabase</p>
-          <p className="mt-1 text-muted-foreground">No Supabase client or migration endpoint is configured in this repository, so no Supabase schema changes are attempted.</p>
+          <p className="mt-1 text-muted-foreground">
+            {import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
+              ? 'Supabase is configured and available for compatibility checks alongside Appwrite.'
+              : 'No Supabase client or migration endpoint is configured in this repository, so only Appwrite-native flows are active.'}
+          </p>
         </div>
 
         <div className="flex flex-wrap gap-3">

@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import AuthShell from '../components/AuthShell'
 import { useTheme } from '../hooks/useTheme'
+import { useAuth } from '../lib/AuthContext'
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const location = useLocation()
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const { resetPassword } = useAuth()
 
   const themeClasses = useMemo(() => theme === 'dark'
     ? {
@@ -32,11 +35,20 @@ export default function ResetPassword() {
       return
     }
 
+    const token = new URLSearchParams(location.search).get('token')
+    if (!token) {
+      setError('This reset link is missing a token. Please request a new reset link.')
+      return
+    }
+
     setLoading(true)
 
     try {
-      // TODO: Implement password reset logic
-      navigate('/login')
+      const result = await resetPassword(token, password)
+      if (!result.ok) {
+        throw new Error('Password reset failed.')
+      }
+      navigate('/login', { replace: true })
     } catch (err) {
       setError(err.message || 'Failed to reset password')
     } finally {

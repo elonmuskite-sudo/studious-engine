@@ -1,12 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import base44 from "@base44/vite-plugin";
 import path from "path";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
 
+const hasBase44Proxy = Boolean(process.env.VITE_BASE44_APP_BASE_URL);
+
+let base44Plugin = null;
+if (hasBase44Proxy) {
+  base44Plugin = (await import("@base44/vite-plugin")).default;
+}
+
 export default defineConfig({
-  plugins: [react(), base44(), cloudflare()],
+  plugins: [
+    react(),
+    ...(base44Plugin ? [base44Plugin()] : []),
+    cloudflare(),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

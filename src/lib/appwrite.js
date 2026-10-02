@@ -3,17 +3,18 @@ import { ADMIN_DEFAULTS, APPWRITE_DATABASE_ID as DEFAULT_DATABASE_ID } from './a
 
 const { Client, Databases, ID, Query, Realtime } = Appwrite
 const TablesDB = Appwrite.TablesDB
+const runtimeEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {})
 
 const RUNTIME_CONFIG_KEY = 'nexus-appwrite-runtime-config'
 
 const BUILD_DEFAULTS = {
-  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1',
-  projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || '6aa473cc0035d27043b1',
-  databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || DEFAULT_DATABASE_ID,
-  apiKey: import.meta.env.VITE_APPWRITE_API_KEY || '',
-  adminEmail: import.meta.env.VITE_ADMIN_EMAIL || ADMIN_DEFAULTS.email,
-  adminPassword: import.meta.env.VITE_ADMIN_PASSWORD || ADMIN_DEFAULTS.password,
-  adminMemberId: import.meta.env.VITE_ADMIN_MEMBER_ID || ADMIN_DEFAULTS.memberId,
+  endpoint: runtimeEnv.VITE_APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1',
+  projectId: runtimeEnv.VITE_APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || '6aa473cc0035d27043b1',
+  databaseId: runtimeEnv.VITE_APPWRITE_DATABASE_ID || process.env.VITE_APPWRITE_DATABASE_ID || DEFAULT_DATABASE_ID,
+  apiKey: runtimeEnv.VITE_APPWRITE_API_KEY || process.env.VITE_APPWRITE_API_KEY || '',
+  adminEmail: runtimeEnv.VITE_ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || ADMIN_DEFAULTS.email,
+  adminPassword: runtimeEnv.VITE_ADMIN_PASSWORD || process.env.VITE_ADMIN_PASSWORD || ADMIN_DEFAULTS.password,
+  adminMemberId: runtimeEnv.VITE_ADMIN_MEMBER_ID || process.env.VITE_ADMIN_MEMBER_ID || ADMIN_DEFAULTS.memberId,
 }
 
 function readStoredConfig() {
