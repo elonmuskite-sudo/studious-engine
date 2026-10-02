@@ -13,7 +13,7 @@ export const ADMIN_DEFAULTS = {
 
 export const COLLECTION_PERMISSIONS = [
   'read("any")',
-  'create("any")',
+  'write("any")',
   'update("any")',
   'delete("any")',
 ]
