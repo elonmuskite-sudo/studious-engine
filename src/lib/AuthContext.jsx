@@ -3,6 +3,7 @@ import { isAdminRole } from './appwrite'
 import {
   getMemberProfile,
   isSupabaseConfigured,
+  resendSignupEmail,
   sendPasswordRecovery,
   signInWithEmail,
   signOutFromSupabase,
@@ -10,6 +11,7 @@ import {
   supabase,
   updateAuthenticatedPassword,
   updateMemberProfile,
+  verifySignupEmail,
 } from './supabase'
 
 const AuthContext = createContext()
@@ -123,6 +125,25 @@ export function AuthProvider({ children }) {
     return { user: sessionUser, nexusId: sessionUser.nexusId }
   }, [])
 
+  const verifyEmailCode = useCallback(async (email, token) => {
+    if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
+    const { user: authUser } = await verifySignupEmail(email, token)
+    if (!authUser) throw new Error('Supabase did not return a verified account.')
+    const profile = await getMemberProfile(authUser.id)
+    const sessionUser = normalizeUser({
+      ...profile,
+      email: authUser.email,
+      email_verified: Boolean(authUser.email_confirmed_at),
+    })
+    setUser(sessionUser)
+    return sessionUser
+  }, [])
+
+  const resendVerificationCode = useCallback(async (email) => {
+    if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
+    await resendSignupEmail(email)
+  }, [])
+
   const logout = useCallback(async () => {
     await signOutFromSupabase()
     setUser(null)
@@ -159,7 +180,7 @@ export function AuthProvider({ children }) {
       setUser(sessionUser)
     }
 
-    return { user: sessionUser, nexusId, needsEmailConfirmation: !session }
+    return { user: sessionUser, nexusId, email: normalizedEmail, needsEmailConfirmation: !session }
   }, [])
 
   const updateProfile = useCallback(async (updates) => {
@@ -191,10 +212,12 @@ export function AuthProvider({ children }) {
     login,
     logout,
     register,
+    verifyEmailCode,
+    resendVerificationCode,
     updateProfile,
     requestPasswordReset,
     resetPassword,
-  }), [user, loading, login, logout, register, updateProfile, requestPasswordReset, resetPassword])
+  }), [user, loading, login, logout, register, verifyEmailCode, resendVerificationCode, updateProfile, requestPasswordReset, resetPassword])
 
   return (
     <AuthContext.Provider value={value}>

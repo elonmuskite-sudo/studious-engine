@@ -13,8 +13,6 @@ export default function Register() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [memberDetails, setMemberDetails] = useState(null)
-  const [copied, setCopied] = useState(false)
   const { theme } = useTheme()
   const { register, user } = useAuth()
   const navigate = useNavigate()
@@ -45,58 +43,24 @@ export default function Register() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    setCopied(false)
 
     try {
       const result = await register({ email, firstName, lastName, password })
-      setMemberDetails(result)
+      if (result.needsEmailConfirmation) {
+        try {
+          sessionStorage.setItem('nexus-pending-verification-email', result.email)
+        } catch {
+          // Route state still carries the address for this verification visit.
+        }
+        navigate('/verify-email', { replace: true, state: { email: result.email } })
+      } else {
+        navigate('/app', { replace: true })
+      }
     } catch (err) {
       setError(err.message || 'Registration failed')
     } finally {
       setLoading(false)
     }
-  }
-
-  if (memberDetails) {
-    const memberNumber = memberDetails.user?.nexusIdDisplay || memberDetails.user?.nexusId || memberDetails.nexusId
-
-    return (
-      <AuthShell title={memberDetails.needsEmailConfirmation ? 'Verify your email' : 'Your Nexus account is ready'} subtitle={memberDetails.needsEmailConfirmation ? 'Confirm your email using the link we sent. Your Nexus number is shown below.' : 'Your account is ready. Keep your Nexus number for your profile.'} compact>
-        <div className={`flex flex-col rounded-[24px] border p-8 ${theme === 'dark' ? 'border-emerald-500/20 bg-slate-900/60' : 'border-emerald-200 bg-white/80'}`}>
-          <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-sm ${theme === 'dark' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-            {memberDetails.needsEmailConfirmation ? 'Confirmation email sent' : 'Nexus account created'}
-          </div>
-          <div className={`mt-6 rounded-2xl border p-5 ${theme === 'dark' ? 'border-blue-500/20 bg-blue-500/10' : 'border-blue-200 bg-blue-50'}`}>
-            <p className={`text-sm ${themeClasses.muted}`}>Nexus number</p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <p className="text-2xl font-semibold tracking-[0.25em] text-blue-500 dark:text-blue-400">{memberNumber}</p>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(memberNumber)
-                    setCopied(true)
-                  } catch {
-                    setCopied(false)
-                  }
-                }}
-                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-            <p className={`mt-4 text-sm ${themeClasses.muted}`}>Keep this number for your Nexus profile. Sign in using your email address.</p>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {!memberDetails.needsEmailConfirmation && <button onClick={() => navigate('/app')} className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${themeClasses.button}`}>Continue to app</button>}
-            <Link to="/login" className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${theme === 'dark' ? 'border-white/10 text-slate-200 hover:bg-white/10' : 'border-slate-300 text-slate-700 hover:bg-slate-100'}`}>
-              Sign in later
-            </Link>
-          </div>
-        </div>
-      </AuthShell>
-    )
   }
 
   return (

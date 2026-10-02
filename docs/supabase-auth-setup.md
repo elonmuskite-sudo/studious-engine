@@ -31,6 +31,8 @@ In Supabase Dashboard, open **Authentication → URL Configuration**:
 - Redirect URLs: `https://nexus-chat-world.com/reset-password`
 - For local development, add `http://localhost:5173/login` and `http://localhost:5173/reset-password`.
 
+In **Authentication → Email Templates → Confirm signup**, use the six-digit token placeholder `{{ .Token }}` in the message. Keep **Confirm email** enabled in **Authentication → Providers → Email** so signup returns to the verification-code flow. The app verifies the code with Supabase Auth and resends it using the signup email action.
+
 ## 3. Configure Resend SMTP
 
 In Resend, use the verified domain `nexus-chat-world.com` and create an API key with the minimum permissions needed for sending. In Supabase Dashboard, open **Authentication → SMTP Settings**, enable custom SMTP, and configure:

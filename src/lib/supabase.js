@@ -35,6 +35,26 @@ export async function signUpWithEmail({ email, password, firstName, lastName, ne
   return data
 }
 
+export async function verifySignupEmail(email, token) {
+  if (!supabase) throw new Error('Supabase Auth is not configured.')
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: String(email || '').trim().toLowerCase(),
+    token: String(token || '').trim(),
+    type: 'email',
+  })
+  if (error) throw error
+  return data
+}
+
+export async function resendSignupEmail(email) {
+  if (!supabase) throw new Error('Supabase Auth is not configured.')
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: String(email || '').trim().toLowerCase(),
+  })
+  if (error) throw error
+}
+
 export async function signInWithEmail(email, password) {
   if (!supabase) throw new Error('Supabase Auth is not configured.')
   const { data, error } = await supabase.auth.signInWithPassword({

@@ -14,6 +14,7 @@ import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AuthLanding from "./pages/AuthLanding.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
+import VerifyEmail from "./pages/VerifyEmail.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import PageNotFound from "./lib/PageNotFound.jsx";
@@ -29,6 +30,7 @@ function App() {
             <Route path="/" element={<AuthGuard><AuthLanding /></AuthGuard>} />
             <Route path="/login" element={<AuthGuard><Login /></AuthGuard>} />
             <Route path="/register" element={<AuthGuard><Register /></AuthGuard>} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<AuthGuard><ForgotPassword /></AuthGuard>} />
             <Route path="/reset-password" element={<AuthGuard><ResetPassword /></AuthGuard>} />
             <Route
