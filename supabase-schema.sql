@@ -1,5 +1,6 @@
 create table if not exists public.members (
   id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique references auth.users (id) on delete cascade,
   member_id text not null unique,
   first_name text not null,
   last_name text not null,
@@ -14,6 +15,8 @@ alter table public.members add column if not exists email_verified boolean not n
 alter table public.members add column if not exists role text not null default 'user';
 alter table public.members add column if not exists avatar_url text;
 alter table public.members add column if not exists created_at timestamptz not null default now();
+alter table public.members add column if not exists auth_user_id uuid unique references auth.users (id) on delete cascade;
+alter table public.members alter column password drop not null;
 
 create unique index if not exists idx_members_email
   on public.members (email)
@@ -223,3 +226,197 @@ $$;
 
 revoke all on function public.verify_member_login(text, text) from public;
 grant execute on function public.verify_member_login(text, text) to anon, authenticated, service_role;
+
+create or replace function public.current_member_profile_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select id from public.members where auth_user_id = auth.uid() limit 1
+$$;
+
+create or replace function public.current_member_is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.members
+    where auth_user_id = auth.uid() and role in ('admin', 'supabase_admin', 'appwrite_admin')
+  )
+$$;
+
+create or replace function public.create_member_for_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_member_id text;
+  new_member_row_id uuid;
+  first_name_value text;
+  last_name_value text;
+  full_name_value text;
+begin
+  first_name_value := coalesce(nullif(new.raw_user_meta_data->>'first_name', ''), 'Nexus');
+  last_name_value := coalesce(nullif(new.raw_user_meta_data->>'last_name', ''), 'Member');
+  full_name_value := trim(first_name_value || ' ' || last_name_value);
+  new_member_id := new.raw_user_meta_data->>'member_id';
+
+  if new_member_id !~ '^10[0-9]{8}$' then
+    raise exception 'A valid Nexus member ID is required';
+  end if;
+
+  insert into public.members (
+    id, auth_user_id, member_id, first_name, last_name, full_name, email, email_verified, role
+  ) values (
+    new.id, new.id, new_member_id, first_name_value, last_name_value, full_name_value,
+    new.email, new.email_confirmed_at is not null, 'user'
+  ) returning id into new_member_row_id;
+
+  insert into public.profiles (id, email, full_name)
+  values (new_member_row_id, new.email, full_name_value)
+  on conflict (id) do update set email = excluded.email, full_name = excluded.full_name;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_nexus_member on auth.users;
+create trigger on_auth_user_created_nexus_member
+  after insert on auth.users
+  for each row execute procedure public.create_member_for_auth_user();
+
+create or replace function public.sync_member_email_from_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  member_row_id uuid;
+begin
+  update public.members
+  set email = new.email,
+      email_verified = new.email_confirmed_at is not null
+  where auth_user_id = new.id
+  returning id into member_row_id;
+
+  if member_row_id is not null then
+    update public.profiles
+    set email = new.email
+    where id = member_row_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_updated_nexus_email on auth.users;
+create trigger on_auth_user_updated_nexus_email
+  after update of email, email_confirmed_at on auth.users
+  for each row execute procedure public.sync_member_email_from_auth_user();
+
+drop function if exists public.verify_member_login(text, text);
+revoke all on function public.current_member_profile_id() from public, anon;
+revoke all on function public.current_member_is_admin() from public, anon;
+revoke all on function public.create_member_for_auth_user() from public, anon, authenticated;
+revoke all on function public.sync_member_email_from_auth_user() from public, anon, authenticated;
+grant execute on function public.current_member_profile_id() to authenticated, service_role;
+grant execute on function public.current_member_is_admin() to authenticated, service_role;
+
+revoke all on public.members from anon, authenticated;
+revoke all privileges (id, auth_user_id, member_id, first_name, last_name, full_name, password, avatar_url, email, email_verified, role, created_at)
+  on table public.members from anon, authenticated;
+grant select (id, member_id, first_name, last_name, full_name, avatar_url, email, email_verified, role, created_at)
+  on public.members to authenticated;
+grant update (first_name, last_name, full_name, avatar_url)
+  on public.members to authenticated;
+grant all on public.members to service_role;
+
+drop policy if exists "Members can view non-admin accounts" on public.members;
+drop policy if exists "Admin self read" on public.members;
+drop policy if exists "Members can create regular accounts" on public.members;
+drop policy if exists "Members can update their own account" on public.members;
+drop policy if exists "Members can delete their own account" on public.members;
+drop policy if exists "Members read own profile" on public.members;
+drop policy if exists "Admins read member profiles" on public.members;
+create policy "Members read own profile" on public.members
+  for select to authenticated using (auth_user_id = auth.uid());
+create policy "Admins read member profiles" on public.members
+  for select to authenticated using (public.current_member_is_admin());
+create policy "Members update own profile" on public.members
+  for update to authenticated using (auth_user_id = auth.uid() and role = 'user')
+  with check (auth_user_id = auth.uid() and role = 'user');
+
+drop policy if exists "Profiles are readable by their owner" on public.profiles;
+drop policy if exists "Members can create their own profile" on public.profiles;
+drop policy if exists "Members can update their own profile" on public.profiles;
+drop policy if exists "Members can delete their own profile" on public.profiles;
+create policy "Members read own profile" on public.profiles
+  for select to authenticated using (id = public.current_member_profile_id());
+create policy "Members update own profile" on public.profiles
+  for update to authenticated using (id = public.current_member_profile_id())
+  with check (id = public.current_member_profile_id());
+
+drop policy if exists "Chat members can view chats" on public.chats;
+drop policy if exists "Members can create owned chats" on public.chats;
+drop policy if exists "Chat owners can update chats" on public.chats;
+drop policy if exists "Chat owners can delete chats" on public.chats;
+create policy "Chat members can view chats" on public.chats
+  for select to authenticated using (
+    owner_id = public.current_member_profile_id()
+    or exists (
+      select 1 from public.chat_members cm
+      where cm.chat_id = chats.id and cm.profile_id = public.current_member_profile_id()
+    )
+  );
+create policy "Members can create owned chats" on public.chats
+  for insert to authenticated with check (owner_id = public.current_member_profile_id());
+create policy "Chat owners can update chats" on public.chats
+  for update to authenticated using (owner_id = public.current_member_profile_id())
+  with check (owner_id = public.current_member_profile_id());
+create policy "Chat owners can delete chats" on public.chats
+  for delete to authenticated using (owner_id = public.current_member_profile_id());
+
+drop policy if exists "Members can view their chat memberships" on public.chat_members;
+drop policy if exists "Members can join chats as themselves" on public.chat_members;
+drop policy if exists "Members can leave chats themselves" on public.chat_members;
+create policy "Members can view their chat memberships" on public.chat_members
+  for select to authenticated using (profile_id = public.current_member_profile_id());
+create policy "Members can join chats as themselves" on public.chat_members
+  for insert to authenticated with check (profile_id = public.current_member_profile_id());
+create policy "Members can leave chats themselves" on public.chat_members
+  for delete to authenticated using (profile_id = public.current_member_profile_id());
+
+drop policy if exists "Chat members can view messages" on public.messages;
+drop policy if exists "Chat members can send messages" on public.messages;
+drop policy if exists "Senders can update their messages" on public.messages;
+drop policy if exists "Senders can delete their messages" on public.messages;
+create policy "Chat members can view messages" on public.messages
+  for select to authenticated using (
+    exists (
+      select 1 from public.chat_members cm
+      where cm.chat_id = messages.chat_id
+        and cm.profile_id = public.current_member_profile_id()
+    )
+  );
+create policy "Chat members can send messages" on public.messages
+  for insert to authenticated with check (
+    sender_id = public.current_member_profile_id()
+    and exists (
+      select 1 from public.chat_members cm
+      where cm.chat_id = messages.chat_id
+        and cm.profile_id = public.current_member_profile_id()
+    )
+  );
+create policy "Senders can update their messages" on public.messages
+  for update to authenticated using (sender_id = public.current_member_profile_id())
+  with check (sender_id = public.current_member_profile_id());
+create policy "Senders can delete their messages" on public.messages
+  for delete to authenticated using (sender_id = public.current_member_profile_id());

@@ -8,7 +8,7 @@
  *   VITE_APPWRITE_ENDPOINT / APPWRITE_ENDPOINT
  *   VITE_APPWRITE_PROJECT_ID / APPWRITE_PROJECT_ID
  *   VITE_APPWRITE_DATABASE_ID / APPWRITE_DATABASE_ID
- *   VITE_APPWRITE_API_KEY / APPWRITE_API_KEY
+ *   APPWRITE_API_KEY (server-only)
  *   ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_MEMBER_ID
  */
 
@@ -56,14 +56,19 @@ const config = {
   endpoint: env('APPWRITE_ENDPOINT', 'VITE_APPWRITE_ENDPOINT'),
   projectId: env('APPWRITE_PROJECT_ID', 'VITE_APPWRITE_PROJECT_ID'),
   databaseId: env('APPWRITE_DATABASE_ID', 'VITE_APPWRITE_DATABASE_ID') || '6aafb57c002d1184ead1',
-  apiKey: env('APPWRITE_API_KEY', 'VITE_APPWRITE_API_KEY'),
-  adminEmail: env('ADMIN_EMAIL') || ADMIN_DEFAULTS.email,
-  adminPassword: env('ADMIN_PASSWORD') || ADMIN_DEFAULTS.password,
+  apiKey: env('APPWRITE_API_KEY'),
+  adminEmail: env('ADMIN_EMAIL'),
+  adminPassword: env('ADMIN_PASSWORD'),
   adminMemberId: env('ADMIN_MEMBER_ID') || ADMIN_DEFAULTS.memberId,
 }
 
 if (!config.endpoint || !config.projectId || !config.apiKey) {
   console.error('[setup-appwrite] Missing APPWRITE endpoint, project ID, or API key.')
+  process.exit(1)
+}
+
+if (!dryRun && !verifyOnly && (!config.adminEmail || !config.adminPassword)) {
+  console.error('[setup-appwrite] ADMIN_EMAIL and ADMIN_PASSWORD are required for admin provisioning.')
   process.exit(1)
 }
 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import AuthShell from '../components/AuthShell'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../lib/AuthContext'
@@ -9,7 +9,6 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const location = useLocation()
   const navigate = useNavigate()
   const { theme } = useTheme()
   const { resetPassword } = useAuth()
@@ -34,17 +33,15 @@ export default function ResetPassword() {
       setError('Passwords do not match')
       return
     }
-
-    const token = new URLSearchParams(location.search).get('token')
-    if (!token) {
-      setError('This reset link is missing a token. Please request a new reset link.')
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
 
     setLoading(true)
 
     try {
-      const result = await resetPassword(token, password)
+      const result = await resetPassword(password)
       if (!result.ok) {
         throw new Error('Password reset failed.')
       }
@@ -69,6 +66,8 @@ export default function ResetPassword() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              minLength={8}
+              autoComplete="new-password"
               className={`w-full rounded-lg border px-4 py-3 text-sm outline-none transition ${themeClasses.input}`}
               placeholder="••••••••"
             />
@@ -82,6 +81,8 @@ export default function ResetPassword() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              minLength={8}
+              autoComplete="new-password"
               className={`w-full rounded-lg border px-4 py-3 text-sm outline-none transition ${themeClasses.input}`}
               placeholder="••••••••"
             />

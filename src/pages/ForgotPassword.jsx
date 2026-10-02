@@ -5,7 +5,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../lib/AuthContext'
 
 export default function ForgotPassword() {
-  const [identifier, setIdentifier] = useState('')
+  const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -31,16 +31,9 @@ export default function ForgotPassword() {
     setLoading(true)
 
     try {
-      const result = await requestPasswordReset(identifier)
-      if (!result.ok) {
-        throw new Error(result.message || 'No account found for that number.')
-      }
-
-      const resetLink = result.resetUrl || `/reset-password?token=${encodeURIComponent(result.token)}`
-      const origin = typeof window !== 'undefined' ? window.location.origin : ''
-      const fullLink = `${origin}${resetLink}`
-      setMessage(`Reset link ready. Open ${fullLink} to choose a new password.`)
-      setIdentifier('')
+      await requestPasswordReset(email)
+      setMessage('If an account exists for that email, a password recovery link will arrive shortly.')
+      setEmail('')
     } catch (err) {
       setError(err.message || 'Failed to send reset email')
     } finally {
@@ -49,20 +42,21 @@ export default function ForgotPassword() {
   }
 
   return (
-    <AuthShell title="Forgot your password?" subtitle="Enter your Nexus number or account email to generate a reset link for your account." compact>
+    <AuthShell title="Forgot your password?" subtitle="Enter your account email and we’ll send a secure password recovery link." compact>
       <div className="mx-auto w-full max-w-md">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className={`mb-2 block text-sm font-medium ${themeClasses.muted}`}>
-              Nexus number or email
+              Email address
             </label>
             <input
-              type="text"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               className={`w-full rounded-lg border px-4 py-3 text-sm outline-none transition ${themeClasses.input}`}
-              placeholder="10-1234-5678 or you@example.com"
+              placeholder="you@example.com"
             />
           </div>
           {error && <p className="text-center text-sm text-destructive">{error}</p>}
@@ -72,7 +66,7 @@ export default function ForgotPassword() {
             disabled={loading}
             className={`w-full rounded-lg px-4 py-3 font-semibold transition-colors disabled:cursor-not-allowed ${themeClasses.button} disabled:bg-slate-400`}
           >
-            {loading ? 'Preparing...' : 'Send Reset Link'}
+            {loading ? 'Sending...' : 'Send Reset Link'}
           </button>
         </form>
         <p className={`mt-6 text-center text-sm ${themeClasses.muted}`}>

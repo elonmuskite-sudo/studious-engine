@@ -396,13 +396,14 @@ export async function syncAppwriteSchema(config, options = {}) {
 }
 
 export async function provisionAdminUser(config, logs = [], { apply } = { apply: true }) {
+  if (!config.adminEmail) throw new Error('ADMIN_EMAIL is required for admin provisioning.')
+
   const admin = {
     member_id: config.adminMemberId || ADMIN_DEFAULTS.memberId,
-    email: config.adminEmail || ADMIN_DEFAULTS.email,
+    email: config.adminEmail,
     first_name: ADMIN_DEFAULTS.firstName,
     last_name: ADMIN_DEFAULTS.lastName,
     full_name: ADMIN_DEFAULTS.fullName,
-    password: config.adminPassword || ADMIN_DEFAULTS.password,
     role: ADMIN_DEFAULTS.role,
     email_verified: true,
     created_at: new Date().toISOString(),
@@ -443,13 +444,15 @@ export async function provisionAdminUser(config, logs = [], { apply } = { apply:
     return { created: false, record: null, missing: true }
   }
 
+  if (!config.adminPassword) throw new Error('ADMIN_PASSWORD is required to create the admin member.')
+
   const created = await appwriteRequest(
     config,
     'POST',
     `/tablesdb/${config.databaseId}/tables/members/rows`,
     {
       rowId: 'unique()',
-      data: admin,
+      data: { ...admin, password: config.adminPassword },
       permissions: COLLECTION_PERMISSIONS,
     }
   )

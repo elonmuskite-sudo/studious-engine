@@ -4,10 +4,9 @@ import { ShieldCheckIcon } from '@heroicons/react/24/solid'
 import { useAuth } from '../lib/AuthContext'
 import { useTheme } from '../hooks/useTheme'
 import AuthShell from '../components/AuthShell'
-import NexusNumberInput from '../components/NexusNumberInput'
 
 export default function Login() {
-  const [nexusId, setNexusId] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -43,7 +42,7 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const result = await login(nexusId, password)
+      const result = await login(email, password)
       const destination = result?.user?.role === 'admin' ? '/admin' : '/app'
       navigate(destination)
     } catch (err) {
@@ -56,7 +55,7 @@ export default function Login() {
   return (
     <AuthShell
       title="Welcome back to Nexus"
-      subtitle="Sign in using your unique Nexus number and password. Enter only the eight digits after the fixed 10- prefix."
+      subtitle="Sign in using the email address associated with your Nexus account."
       compact
     >
       <div className="flex flex-col gap-8 lg:flex-row">
@@ -73,15 +72,18 @@ export default function Login() {
 
         <div className={`w-full max-w-md rounded-[24px] border p-6 shadow-lg ${themeClasses.card}`}>
           <h2 className="text-2xl font-semibold">Nexus login</h2>
-          <p className={`mt-2 text-sm ${themeClasses.muted}`}>Use your Nexus number issued during registration.</p>
+          <p className={`mt-2 text-sm ${themeClasses.muted}`}>Your Nexus number remains available in your profile.</p>
           <form onSubmit={handleSubmit} className="mt-6 space-y-5">
             <div>
-              <label className={`mb-2 block text-sm font-medium ${themeClasses.muted}`}>Nexus number</label>
-              <NexusNumberInput
-                value={nexusId}
-                onChange={setNexusId}
+              <label className={`mb-2 block text-sm font-medium ${themeClasses.muted}`}>Email address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
                 className={`w-full rounded-xl border px-4 py-3 text-sm outline-none ring-0 transition ${themeClasses.input}`}
-                placeholder="2345-6789"
+                placeholder="you@example.com"
               />
             </div>
             <div>
@@ -91,6 +93,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${themeClasses.input}`}
                 placeholder="••••••••"
               />

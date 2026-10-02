@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useSetting } from '../hooks/useSetting'
 import SettingsShell from '../components/chat/settings/SettingsShell'
 import AppearanceSettings from '../components/chat/settings/AppearanceSettings'
@@ -7,9 +6,6 @@ import PrivacySettings from '../components/chat/settings/PrivacySettings'
 import ProfileEdit from '../components/chat/settings/ProfileEdit'
 import Avatar from '../components/chat/Avatar'
 import { useAuth } from '../lib/AuthContext'
-import { canManageAppwriteSchema, getAppwriteConfig } from '../lib/appwrite'
-import { inspectAppwriteSchema, syncAppwriteSchema, verifyAppwriteSetup } from '../lib/appwriteProvision'
-import { NEXUS_COLLECTIONS } from '../lib/appwriteSchema'
 import { ChevronRight, ArrowLeft, Bell, Database, Palette, ShieldCheck, UserCircle } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
@@ -103,112 +99,16 @@ function SettingsMenu() {
 }
 
 function SchemaSettings() {
-  const config = getAppwriteConfig()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [result, setResult] = useState(null)
-  const [verification, setVerification] = useState(null)
-
-  const handleInspect = async () => {
-    setBusy(true)
-    setError('')
-    try {
-      setResult(await inspectAppwriteSchema(config))
-      setVerification(null)
-    } catch (err) {
-      setError(err?.message || 'Schema inspection failed.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleApply = async () => {
-    setBusy(true)
-    setError('')
-    try {
-      setResult(await syncAppwriteSchema(config, { apply: true, provisionAdmin: true }))
-      setVerification(await verifyAppwriteSetup(config))
-    } catch (err) {
-      setError(err?.message || 'Schema update failed.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const collections = result?.summary?.collections || NEXUS_COLLECTIONS.map((collection) => ({
-    ...collection,
-    missing: !result,
-    attributes: collection.attributes.map((attribute) => ({ key: attribute.key, missing: !result })),
-    indexes: collection.indexes.map((index) => ({ key: index.key, missing: !result })),
-  }))
-
   return (
     <SettingsSubPage title="Database schemas">
-      <div className="space-y-5">
-        <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm">
-          <p className="font-semibold text-foreground">Appwrite</p>
-          <p className="mt-1 text-muted-foreground">The active database provider for this build.</p>
-          <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-            <p>Endpoint: <span className="font-medium text-foreground">{config.endpoint || 'not set'}</span></p>
-            <p>Project: <span className="font-medium text-foreground">{config.projectId || 'not set'}</span></p>
-            <p>Database: <span className="font-medium text-foreground">{config.databaseId || 'not set'}</span></p>
-            <p>API key: <span className="font-medium text-foreground">{config.apiKey ? 'configured' : 'missing'}</span></p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm">
-          <p className="font-semibold text-foreground">Supabase</p>
-          <p className="mt-1 text-muted-foreground">
-            {import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
-              ? 'Supabase is configured and available for compatibility checks alongside Appwrite.'
-              : 'No Supabase client or migration endpoint is configured in this repository, so only Appwrite-native flows are active.'}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <button type="button" onClick={handleInspect} disabled={busy || !canManageAppwriteSchema()} className="rounded-xl border border-border px-4 py-2 text-sm font-medium disabled:opacity-50">
-            Inspect schema
-          </button>
-          <button type="button" onClick={handleApply} disabled={busy || !canManageAppwriteSchema()} className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
-            {busy ? 'Updating...' : 'Apply missing schema'}
-          </button>
-        </div>
-
-        {!canManageAppwriteSchema() && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            Configure the Appwrite endpoint, project ID, database ID, and API key before applying changes.
-          </p>
-        )}
-        {error && <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-        {result?.summary && (
-          <p className="rounded-xl border border-border bg-muted p-3 text-sm text-foreground">
-            Missing objects: {result.summary.missingCount}. Created this run: {result.summary.createdCount}.
-          </p>
-        )}
-
-        <div className="space-y-3">
-          {collections.map((collection) => (
-            <div key={collection.id} className="rounded-2xl border border-border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-semibold text-foreground">{collection.name || collection.id}</h3>
-                <span className="text-xs text-muted-foreground">{collection.missing ? 'missing' : 'ready'}</span>
-              </div>
-              <div className="mt-3 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                {(collection.attributes || []).map((attribute) => <p key={attribute.key}>{attribute.key}: {attribute.missing ? 'missing' : 'ok'}</p>)}
-                {(collection.indexes || []).map((index) => <p key={index.key}>{index.key}: {index.missing ? 'missing' : 'ok'}</p>)}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {verification && (
-          <div className="rounded-2xl border border-border p-4">
-            <h3 className="font-semibold text-foreground">Verification</h3>
-            <div className="mt-3 space-y-1 text-sm">
-              {verification.checks.map((check) => <p key={check.name} className={check.pass ? 'text-emerald-600' : 'text-destructive'}>{check.pass ? 'Pass' : 'Fail'}: {check.name}{check.detail ? ` (${check.detail})` : ''}</p>)}
-            </div>
-          </div>
-        )}
+      <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm">
+        <p className="font-semibold text-foreground">Appwrite schema provisioning</p>
+        <p className="mt-2 text-muted-foreground">
+          Schema changes run from the trusted deployment environment. The Appwrite API key and admin password are never sent to this browser.
+        </p>
+        <p className="mt-3 text-muted-foreground">
+          Run <code>npm run admin:sync</code> from a configured server environment to inspect or apply changes.
+        </p>
       </div>
     </SettingsSubPage>
   )

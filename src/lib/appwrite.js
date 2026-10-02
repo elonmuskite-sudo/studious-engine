@@ -1,27 +1,34 @@
 import * as Appwrite from 'appwrite'
-import { ADMIN_DEFAULTS, APPWRITE_DATABASE_ID as DEFAULT_DATABASE_ID } from './appwriteSchema.js'
+import { APPWRITE_DATABASE_ID as DEFAULT_DATABASE_ID } from './appwriteSchema.js'
 
 const { Client, Databases, ID, Query, Realtime } = Appwrite
 const TablesDB = Appwrite.TablesDB
-const runtimeEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {})
 
 const RUNTIME_CONFIG_KEY = 'nexus-appwrite-runtime-config'
+const PUBLIC_CONFIG_KEYS = ['endpoint', 'projectId', 'databaseId']
 
 const BUILD_DEFAULTS = {
-  endpoint: runtimeEnv.VITE_APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1',
-  projectId: runtimeEnv.VITE_APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || '6aa473cc0035d27043b1',
-  databaseId: runtimeEnv.VITE_APPWRITE_DATABASE_ID || process.env.VITE_APPWRITE_DATABASE_ID || DEFAULT_DATABASE_ID,
-  apiKey: runtimeEnv.VITE_APPWRITE_API_KEY || process.env.VITE_APPWRITE_API_KEY || '',
-  adminEmail: runtimeEnv.VITE_ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL || ADMIN_DEFAULTS.email,
-  adminPassword: runtimeEnv.VITE_ADMIN_PASSWORD || process.env.VITE_ADMIN_PASSWORD || ADMIN_DEFAULTS.password,
-  adminMemberId: runtimeEnv.VITE_ADMIN_MEMBER_ID || process.env.VITE_ADMIN_MEMBER_ID || ADMIN_DEFAULTS.memberId,
+  endpoint: import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1',
+  projectId: import.meta.env.VITE_APPWRITE_PROJECT_ID || '6aa473cc0035d27043b1',
+  databaseId: import.meta.env.VITE_APPWRITE_DATABASE_ID || DEFAULT_DATABASE_ID,
+}
+
+function filterPublicConfig(source = {}) {
+  return Object.fromEntries(PUBLIC_CONFIG_KEYS
+    .filter((key) => source[key] !== undefined)
+    .map((key) => [key, source[key]]))
 }
 
 function readStoredConfig() {
   if (typeof window === 'undefined') return {}
   try {
     const raw = window.localStorage.getItem(RUNTIME_CONFIG_KEY)
-    return raw ? JSON.parse(raw) : {}
+    const stored = raw ? JSON.parse(raw) : {}
+    const publicConfig = filterPublicConfig(stored)
+    if (Object.keys(stored).some((key) => !PUBLIC_CONFIG_KEYS.includes(key))) {
+      window.localStorage.setItem(RUNTIME_CONFIG_KEY, JSON.stringify(publicConfig))
+    }
+    return publicConfig
   } catch {
     return {}
   }
@@ -29,10 +36,9 @@ function readStoredConfig() {
 
 function mergeConfig(overlay = {}) {
   const stored = readStoredConfig()
-  const next = { ...BUILD_DEFAULTS, ...stored, ...overlay }
+  const next = { ...BUILD_DEFAULTS, ...stored, ...filterPublicConfig(overlay) }
   next.endpoint = String(next.endpoint || '').replace(/\/$/, '')
   next.databaseId = String(next.databaseId || DEFAULT_DATABASE_ID)
-  next.adminMemberId = String(next.adminMemberId || ADMIN_DEFAULTS.memberId).replace(/\D/g, '')
   return next
 }
 
@@ -152,16 +158,11 @@ export function isAppwriteDataAvailable() {
   return isAppwriteConfigured() && !dataUnavailable
 }
 
-export function canManageAppwriteSchema() {
-  return isAppwriteConfigured() && Boolean(currentConfig.apiKey)
-}
-
 export function getMissingAppwriteConfigKeys() {
   const missing = []
   if (!currentConfig.endpoint) missing.push('VITE_APPWRITE_ENDPOINT')
   if (!currentConfig.projectId) missing.push('VITE_APPWRITE_PROJECT_ID')
   if (!currentConfig.databaseId) missing.push('VITE_APPWRITE_DATABASE_ID')
-  if (!currentConfig.apiKey) missing.push('VITE_APPWRITE_API_KEY')
   return missing
 }
 
@@ -171,15 +172,7 @@ export function applyAppwriteConfig(overlay = {}, { persist = false } = {}) {
   dataUnavailable = false
 
   if (persist && typeof window !== 'undefined') {
-    window.localStorage.setItem(RUNTIME_CONFIG_KEY, JSON.stringify({
-      endpoint: currentConfig.endpoint,
-      projectId: currentConfig.projectId,
-      databaseId: currentConfig.databaseId,
-      apiKey: currentConfig.apiKey,
-      adminEmail: currentConfig.adminEmail,
-      adminPassword: currentConfig.adminPassword,
-      adminMemberId: currentConfig.adminMemberId,
-    }))
+    window.localStorage.setItem(RUNTIME_CONFIG_KEY, JSON.stringify(filterPublicConfig(currentConfig)))
   }
 
   if (currentConfig.endpoint && currentConfig.projectId) {

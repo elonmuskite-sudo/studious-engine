@@ -4,8 +4,6 @@ export const APPWRITE_DATABASE_NAME = 'Nexus Chat'
 export const MEMBER_ROLES = ['user', 'admin']
 
 export const ADMIN_DEFAULTS = {
-  email: 'elonmuskite@gmail.com',
-  password: 'Jagaban@1',
   memberId: '1000000000',
   firstName: 'System',
   lastName: 'Administrator',
