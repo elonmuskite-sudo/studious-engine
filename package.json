@@ -7,6 +7,7 @@
     "dev": "vite",
     "env:generate": "node scripts/generate-runtime-env.js",
     "env:validate": "node scripts/validate-production-env.js",
+    "test:email": "node --test tests/resendEmailApi.test.mjs",
     "vercel:env:sync": "npm run env:generate && node scripts/sync-vercel-env.js",
     "vercel:env:dry": "npm run env:generate && node scripts/sync-vercel-env.js --dry-run",
     "prebuild": "npm run env:generate && npm run env:validate",

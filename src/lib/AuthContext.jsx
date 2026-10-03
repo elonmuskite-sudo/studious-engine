@@ -3,15 +3,16 @@ import { isAdminRole } from './appwrite'
 import {
   getMemberProfile,
   isSupabaseConfigured,
-  resendSignupEmail,
-  sendPasswordRecovery,
+  clearPendingEmailCode,
+  resendEmailCode,
+  startPasswordRecoveryCode,
+  startSignupEmailCode,
   signInWithEmail,
   signOutFromSupabase,
-  signUpWithEmail,
   supabase,
   updateAuthenticatedPassword,
   updateMemberProfile,
-  verifySignupEmail,
+  verifyEmailCode as verifyEmailOtp,
 } from './supabase'
 
 const AuthContext = createContext()
@@ -125,10 +126,11 @@ export function AuthProvider({ children }) {
     return { user: sessionUser, nexusId: sessionUser.nexusId }
   }, [])
 
-  const verifyEmailCode = useCallback(async (email, token) => {
+  const verifyEmailCode = useCallback(async (email, token, purpose = 'signup') => {
     if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
-    const { user: authUser } = await verifySignupEmail(email, token)
+    const { user: authUser } = await verifyEmailOtp(email, token, purpose)
     if (!authUser) throw new Error('Supabase did not return a verified account.')
+    await clearPendingEmailCode(email, purpose).catch(() => {})
     const profile = await getMemberProfile(authUser.id)
     const sessionUser = normalizeUser({
       ...profile,
@@ -139,9 +141,9 @@ export function AuthProvider({ children }) {
     return sessionUser
   }, [])
 
-  const resendVerificationCode = useCallback(async (email) => {
+  const resendVerificationCode = useCallback(async (email, purpose = 'signup') => {
     if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
-    await resendSignupEmail(email)
+    await resendEmailCode(email, purpose)
   }, [])
 
   const logout = useCallback(async () => {
@@ -158,29 +160,14 @@ export function AuthProvider({ children }) {
     if (!normalizedEmail) throw new Error('Email is required.')
     if (cleanPassword.length < 8) throw new Error('Password must be at least 8 characters.')
     const nexusId = generateNexusId()
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const { user: authUser, session } = await signUpWithEmail({
+    await startSignupEmailCode({
       email: normalizedEmail,
       password: cleanPassword,
       firstName: normalizedFirstName,
       lastName: normalizedLastName,
-      nexusId,
-      redirectTo: `${origin}/login`,
+      memberId: nexusId,
     })
-    if (!authUser) throw new Error('Supabase did not return the new account.')
-
-    let sessionUser = null
-    if (session) {
-      const profile = await getMemberProfile(authUser.id)
-      sessionUser = normalizeUser({
-        ...profile,
-        email: authUser.email,
-        email_verified: Boolean(authUser.email_confirmed_at),
-      })
-      setUser(sessionUser)
-    }
-
-    return { user: sessionUser, nexusId, email: normalizedEmail, needsEmailConfirmation: !session }
+    return { user: null, nexusId, email: normalizedEmail, needsEmailConfirmation: true }
   }, [])
 
   const updateProfile = useCallback(async (updates) => {
@@ -191,8 +178,7 @@ export function AuthProvider({ children }) {
 
   const requestPasswordReset = useCallback(async (email) => {
     if (!isSupabaseConfigured()) throw new Error('Password recovery is not configured.')
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    await sendPasswordRecovery(email, `${origin}/reset-password`)
+    await startPasswordRecoveryCode(email)
     return { ok: true }
   }, [])
 

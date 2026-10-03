@@ -4,12 +4,21 @@ import AuthShell from '../components/AuthShell'
 import { useAuth } from '../lib/AuthContext'
 
 const PENDING_EMAIL_KEY = 'nexus-pending-verification-email'
+const PENDING_PURPOSE_KEY = 'nexus-pending-verification-purpose'
 
 function getPendingEmail() {
   try {
     return sessionStorage.getItem(PENDING_EMAIL_KEY) || ''
   } catch {
     return ''
+  }
+}
+
+function getPendingPurpose() {
+  try {
+    return sessionStorage.getItem(PENDING_PURPOSE_KEY) || 'signup'
+  } catch {
+    return 'signup'
   }
 }
 
@@ -26,9 +35,10 @@ export default function VerifyEmail() {
   const navigate = useNavigate()
   const { verifyEmailCode, resendVerificationCode } = useAuth()
   const [email] = useState(() => location.state?.email || getPendingEmail())
+  const [purpose] = useState(() => location.state?.purpose || new URLSearchParams(location.search).get('purpose') || getPendingPurpose())
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(location.state?.notice || '')
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
@@ -44,7 +54,6 @@ export default function VerifyEmail() {
   const handleVerify = async (event) => {
     event.preventDefault()
     setError('')
-    setMessage('')
     if (!/^\d{6}$/.test(code)) {
       setError('Enter the 6-digit code from your email.')
       return
@@ -54,7 +63,12 @@ export default function VerifyEmail() {
     try {
       await verifyEmailCode(email, code)
       clearPendingEmail()
-      navigate('/app', { replace: true })
+      try {
+        sessionStorage.removeItem(PENDING_PURPOSE_KEY)
+      } catch {
+        // Verification succeeded; session storage is optional.
+      }
+      navigate(purpose === 'recovery' ? '/reset-password' : '/app', { replace: true })
     } catch (verifyError) {
       setError(verifyError.message || 'Could not verify this code. Request a new one and try again.')
     } finally {
@@ -64,10 +78,9 @@ export default function VerifyEmail() {
 
   const handleResend = async () => {
     setError('')
-    setMessage('')
     setResending(true)
     try {
-      await resendVerificationCode(email)
+      await resendVerificationCode(email, purpose)
       setResendCooldown(60)
       setMessage('A new verification code has been sent.')
     } catch (resendError) {
@@ -80,7 +93,9 @@ export default function VerifyEmail() {
   return (
     <AuthShell
       title="Verify your email"
-      subtitle={email ? `Enter the 6-digit code sent to ${email}.` : 'Complete registration to request a verification code.'}
+      subtitle={email
+        ? `${purpose === 'recovery' ? 'Enter the 6-digit password recovery code sent to' : 'Enter the 6-digit verification code sent to'} ${email}.`
+        : 'Complete registration or password recovery to request a code.'}
       compact
     >
       {email ? (
@@ -116,7 +131,7 @@ export default function VerifyEmail() {
               disabled={verifying || code.length !== 6}
               className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {verifying ? 'Verifying...' : 'Verify email'}
+              {verifying ? 'Verifying...' : purpose === 'recovery' ? 'Verify recovery code' : 'Verify email'}
             </button>
           </form>
 

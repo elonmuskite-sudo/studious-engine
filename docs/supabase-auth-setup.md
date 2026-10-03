@@ -1,6 +1,6 @@
 # Supabase Auth and Resend setup
 
-The application uses Supabase Auth for credentials and recovery, Supabase `members` rows for Nexus profiles, and Appwrite for the existing chat data. The Resend API key is configured in Supabase Auth SMTP settings; it must never be exposed through a `VITE_` variable or browser bundle.
+The application uses Supabase Auth for credentials and recovery, Supabase `members` rows for Nexus profiles, and Appwrite for the existing chat data. A Vercel serverless function requests Supabase OTPs and sends signup, resend, and recovery codes directly through the Resend API. `RESEND_API_KEY` is server-only and must never be exposed through a `VITE_` variable or browser bundle.
 
 ## 1. Apply the database migration
 
@@ -27,24 +27,22 @@ where auth_user_id = (
 In Supabase Dashboard, open **Authentication → URL Configuration**:
 
 - Site URL: `https://nexus-chat-world.com`
-- Redirect URLs: `https://nexus-chat-world.com/login`
-- Redirect URLs: `https://nexus-chat-world.com/reset-password`
-- For local development, add `http://localhost:5173/login` and `http://localhost:5173/reset-password`.
+- Redirect URLs: `https://nexus-chat-world.com/verify-email`
+- Redirect URLs: `https://nexus-chat-world.com/verify-email?purpose=recovery`
+- For local development, add `http://localhost:5173/verify-email` and `http://localhost:5173/verify-email?purpose=recovery`.
 
-In **Authentication → Email Templates → Confirm signup**, use the six-digit token placeholder `{{ .Token }}` in the message. Keep **Confirm email** enabled in **Authentication → Providers → Email** so signup returns to the verification-code flow. The app verifies the code with Supabase Auth and resends it using the signup email action.
+Keep **Confirm email** enabled in **Authentication → Providers → Email** and set the email OTP expiry to 600 seconds. The app uses Supabase Admin `generateLink` to create OTPs and verifies them with Supabase Auth; Supabase's built-in email templates are not used for these flows.
 
-## 3. Configure Resend SMTP
+## 3. Configure Resend API
 
-In Resend, use the verified domain `nexus-chat-world.com` and create an API key with the minimum permissions needed for sending. In Supabase Dashboard, open **Authentication → SMTP Settings**, enable custom SMTP, and configure:
+In Resend, use the verified domain `nexus-chat-world.com` and create an API key with send-only permissions. The server function sends through `https://api.resend.com/emails` using these Vercel Production variables:
 
-- Host: `smtp.resend.com`
-- Port: `465` with SSL, or `587` with STARTTLS
-- Username: `resend`
-- Password: the Resend API key
-- Sender email: `admin@nexus-chat-world.com`
-- Sender name: `Nexus Chat`
+- `RESEND_API_KEY` (encrypted server variable)
+- `RESEND_FROM=admin@nexus-chat-world.com`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (encrypted server variable)
 
-Use the password reset template with Supabase's `{{ .ConfirmationURL }}` link. Test the confirmation and recovery messages from Supabase Auth after saving SMTP settings.
+The Supabase service-role key is used only by the Vercel function to generate OTPs; never prefix it with `VITE_`.
 
 ## 4. Vercel environment
 
@@ -52,14 +50,17 @@ Set these in **Vercel → Project → Settings → Environment Variables** for P
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `RESEND_API_KEY`
+- `RESEND_FROM`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-Do not add `SUPABASE_SERVICE_ROLE_KEY`, the Postgres connection string, or `RESEND_API_KEY` to frontend `VITE_` variables. The Resend key belongs in Supabase SMTP configuration, not the client app. Redeploy after environment changes.
+Do not add `SUPABASE_SERVICE_ROLE_KEY`, the Postgres connection string, or `RESEND_API_KEY` to frontend `VITE_` variables. These secrets are read only by Vercel serverless functions. Redeploy after environment changes.
 
 ## 5. Verify the flow
 
-1. Register with an email address and an 8-character-minimum password.
-2. Confirm the address using the Supabase Auth email.
-3. Sign in with email/password; the profile row should be created by the database trigger.
-4. Request password recovery and verify the link opens the production reset page.
-5. Set a new password, confirm the session is closed, and sign in with the new password.
-6. In Supabase SQL Editor, verify `members.password` is not selected by anon/authenticated roles and that a user can only select their own member row.
+1. Register with an email address and an 8-character-minimum password; confirm the six-digit code is delivered by Resend.
+2. Verify the code, then sign in; the profile row should be created by the database trigger.
+3. Request password recovery; verify the recovery code is delivered by Resend.
+4. Verify the code, set a new password, and sign in with it.
+5. In Supabase SQL Editor, verify `members.password` is not selected by anon/authenticated roles and that a user can only select their own member row.

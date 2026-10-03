@@ -49,14 +49,29 @@ export default function Register() {
       if (result.needsEmailConfirmation) {
         try {
           sessionStorage.setItem('nexus-pending-verification-email', result.email)
+          sessionStorage.setItem('nexus-pending-verification-purpose', 'signup')
         } catch {
           // Route state still carries the address for this verification visit.
         }
-        navigate('/verify-email', { replace: true, state: { email: result.email } })
+        navigate('/verify-email', { replace: true, state: { email: result.email, purpose: 'signup' } })
       } else {
         navigate('/app', { replace: true })
       }
     } catch (err) {
+      if (err.verificationPending) {
+        const pendingEmail = email.trim().toLowerCase()
+        try {
+          sessionStorage.setItem('nexus-pending-verification-email', pendingEmail)
+          sessionStorage.setItem('nexus-pending-verification-purpose', 'signup')
+        } catch {
+          // Route state carries the address for this visit.
+        }
+        navigate('/verify-email', {
+          replace: true,
+          state: { email: pendingEmail, purpose: 'signup', notice: 'Your account was created, but email delivery failed. Wait briefly, then use Resend code.' },
+        })
+        return
+      }
       setError(err.message || 'Registration failed')
     } finally {
       setLoading(false)

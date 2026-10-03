@@ -17,42 +17,59 @@ export function isSupabaseConfigured() {
   return Boolean(supabase && supabaseUrl && supabaseAnonKey)
 }
 
-export async function signUpWithEmail({ email, password, firstName, lastName, nexusId, redirectTo }) {
-  if (!supabase) throw new Error('Supabase Auth is not configured.')
-  const { data, error } = await supabase.auth.signUp({
-    email: String(email || '').trim().toLowerCase(),
-    password,
-    options: {
-      emailRedirectTo: redirectTo,
-      data: {
-        first_name: String(firstName || '').trim(),
-        last_name: String(lastName || '').trim(),
-        member_id: nexusId,
-      },
-    },
+async function requestEmailCode(body) {
+  const response = await fetch('/api/auth/email-code', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
-  if (error) throw error
-  return data
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(result.error || 'Could not send the email code.')
+    error.verificationPending = Boolean(result.verificationPending)
+    throw error
+  }
+  return result
 }
 
-export async function verifySignupEmail(email, token) {
+export async function startSignupEmailCode({ email, password, firstName, lastName, memberId }) {
+  return requestEmailCode({
+    action: 'signup',
+    purpose: 'signup',
+    email,
+    password,
+    firstName,
+    lastName,
+    memberId,
+  })
+}
+
+export async function verifyEmailCode(email, token, type = 'signup') {
   if (!supabase) throw new Error('Supabase Auth is not configured.')
   const { data, error } = await supabase.auth.verifyOtp({
     email: String(email || '').trim().toLowerCase(),
     token: String(token || '').trim(),
-    type: 'email',
+    type,
   })
   if (error) throw error
   return data
 }
 
-export async function resendSignupEmail(email) {
-  if (!supabase) throw new Error('Supabase Auth is not configured.')
-  const { error } = await supabase.auth.resend({
-    type: 'signup',
-    email: String(email || '').trim().toLowerCase(),
+export async function resendEmailCode(email, purpose) {
+  return requestEmailCode({
+    action: 'resend',
+    purpose,
+    email,
   })
-  if (error) throw error
+}
+
+export async function clearPendingEmailCode(email, purpose) {
+  return requestEmailCode({
+    action: 'clear',
+    purpose,
+    email,
+  })
 }
 
 export async function signInWithEmail(email, password) {
@@ -71,13 +88,12 @@ export async function signOutFromSupabase() {
   if (error) throw error
 }
 
-export async function sendPasswordRecovery(email, redirectTo) {
-  if (!supabase) throw new Error('Supabase Auth is not configured.')
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    String(email || '').trim().toLowerCase(),
-    { redirectTo }
-  )
-  if (error) throw error
+export async function startPasswordRecoveryCode(email) {
+  return requestEmailCode({
+    action: 'recovery',
+    purpose: 'recovery',
+    email,
+  })
 }
 
 export async function updateAuthenticatedPassword(password) {
