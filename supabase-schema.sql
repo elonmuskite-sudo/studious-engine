@@ -420,3 +420,54 @@ create policy "Senders can update their messages" on public.messages
   with check (sender_id = public.current_member_profile_id());
 create policy "Senders can delete their messages" on public.messages
   for delete to authenticated using (sender_id = public.current_member_profile_id());
+
+create table if not exists public.auth_email_code_rate_limits (
+  bucket_key text primary key,
+  window_started_at timestamptz not null default now(),
+  request_count integer not null default 1
+);
+
+alter table public.auth_email_code_rate_limits enable row level security;
+revoke all on public.auth_email_code_rate_limits from public, anon, authenticated;
+grant all on public.auth_email_code_rate_limits to service_role;
+
+create or replace function public.consume_auth_email_code_limit(
+  p_bucket_key text,
+  p_window_seconds integer,
+  p_limit integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  allowed boolean;
+begin
+  if p_bucket_key is null or length(p_bucket_key) <> 64
+    or p_window_seconds < 1 or p_limit < 1 then
+    raise exception 'Invalid email code rate-limit parameters';
+  end if;
+
+  insert into public.auth_email_code_rate_limits as rate_limit (
+    bucket_key, window_started_at, request_count
+  ) values (
+    p_bucket_key, now(), 1
+  )
+  on conflict (bucket_key) do update set
+    window_started_at = case
+      when rate_limit.window_started_at <= now() - make_interval(secs => p_window_seconds) then now()
+      else rate_limit.window_started_at
+    end,
+    request_count = case
+      when rate_limit.window_started_at <= now() - make_interval(secs => p_window_seconds) then 1
+      else rate_limit.request_count + 1
+    end
+  returning request_count <= p_limit into allowed;
+
+  return allowed;
+end;
+$$;
+
+revoke all on function public.consume_auth_email_code_limit(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.consume_auth_email_code_limit(text, integer, integer) to service_role;

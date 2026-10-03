@@ -11,8 +11,8 @@ const originalFetch = globalThis.fetch
 const originalNow = Date.now
 const sentEmails = []
 const authRequests = []
-const codes = ['123456', '654321', '456789', '789012']
-let codeIndex = 0
+const testUserId = 'f9c2e2dd-f11f-43d4-ad07-c94269e5141d'
+let rateLimitAllowed = true
 
 globalThis.fetch = async (request, options = {}) => {
   const url = new URL(request instanceof Request ? request.url : request)
@@ -22,18 +22,35 @@ globalThis.fetch = async (request, options = {}) => {
     return new Response(JSON.stringify({ id: `resend-${sentEmails.length}` }), { status: 201 })
   }
 
+  if (url.pathname.endsWith('/auth/v1/admin/users') && options.method === 'POST') {
+    const body = JSON.parse(options.body)
+    authRequests.push({ action: 'createUser', body })
+    return new Response(JSON.stringify({ id: testUserId, email: body.email, user_metadata: body.user_metadata }), { status: 200 })
+  }
+
+  if (url.pathname.endsWith(`/auth/v1/admin/users/${testUserId}`) && options.method === 'PUT') {
+    const body = JSON.parse(options.body)
+    authRequests.push({ action: 'updateUser', body })
+    return new Response(JSON.stringify({ id: testUserId, email: 'test@example.test', email_confirmed_at: '2026-10-03T00:00:00Z' }), { status: 200 })
+  }
+
   if (url.pathname.endsWith('/auth/v1/admin/generate_link')) {
     const body = JSON.parse(options.body)
-    authRequests.push(body)
-    const code = codes[codeIndex++]
+    authRequests.push({ action: 'generateLink', body })
     return new Response(JSON.stringify({
       action_link: 'https://auth.example.test/action',
-      email_otp: code,
-      hashed_token: 'not-a-real-token-hash',
-      redirect_to: 'https://app.example.test/verify-email',
+      hashed_token: 'mock-supabase-token-hash',
       verification_type: body.type,
-      user: { id: `user-${authRequests.length}`, email: body.email, user_metadata: body.data || {} },
+      user: { id: testUserId, email: body.email },
     }), { status: 200 })
+  }
+
+  if (url.pathname.endsWith('/rest/v1/members')) {
+    return new Response(JSON.stringify({ auth_user_id: testUserId }), { status: 200 })
+  }
+
+  if (url.pathname.endsWith('/rest/v1/rpc/consume_auth_email_code_limit')) {
+    return new Response(String(rateLimitAllowed), { status: 200 })
   }
 
   throw new Error(`Unexpected mocked request: ${url.pathname}`)
@@ -69,7 +86,7 @@ after(() => {
   Date.now = originalNow
 })
 
-test('signup generates a Supabase signup OTP and sends it through Resend', async () => {
+test('signup creates an unconfirmed Supabase user and sends a six-digit code through Resend', async () => {
   const res = responseRecorder()
   await handler(request({
     action: 'signup',
@@ -85,11 +102,14 @@ test('signup generates a Supabase signup OTP and sends it through Resend', async
   assert.deepEqual(res.body, { ok: true })
   assert.match(res.headers['Set-Cookie'], /HttpOnly/)
   assert.match(res.headers['Set-Cookie'], /Secure/)
-  assert.equal(authRequests.at(-1).type, 'signup')
-  assert.equal(authRequests.at(-1).data.member_id, '1012345678')
+  assert.equal(authRequests.at(-1).action, 'createUser')
+  assert.equal(authRequests.at(-1).body.email_confirm, false)
+  assert.equal(authRequests.at(-1).body.user_metadata.member_id, '1012345678')
   assert.equal(sentEmails.at(-1).to[0], 'new-user@example.test')
-  assert.match(sentEmails.at(-1).text, /123456/)
-  assert.equal(JSON.stringify(res.body).includes('123456'), false)
+  assert.match(sentEmails.at(-1).text, /code is \d{6}/)
+  const code = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
+  assert.equal(res.headers['Set-Cookie'].includes(code), false)
+  assert.equal(JSON.stringify(res.body).includes(code), false)
 })
 
 test('resend reuses the pending code and sends it through Resend', async () => {
@@ -104,6 +124,7 @@ test('resend reuses the pending code and sends it through Resend', async () => {
     memberId: '1098765432',
   }), signupResponse)
 
+  const originalCode = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
   const cookie = signupResponse.headers['Set-Cookie'].split(';')[0]
   Date.now = () => 1_061_000
   const res = responseRecorder()
@@ -111,7 +132,7 @@ test('resend reuses the pending code and sends it through Resend', async () => {
 
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.body, { ok: true })
-  assert.match(sentEmails.at(-1).text, /654321/)
+  assert.match(sentEmails.at(-1).text, new RegExp(`code is ${originalCode}`))
 })
 
 test('password recovery generates and sends a recovery OTP through Resend', async () => {
@@ -125,30 +146,50 @@ test('password recovery generates and sends a recovery OTP through Resend', asyn
 
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.body, { ok: true })
-  assert.equal(authRequests.at(-1).type, 'recovery')
   assert.equal(sentEmails.at(-1).to[0], 'recover-user@example.test')
-  assert.match(sentEmails.at(-1).text, /456789/)
+  assert.match(sentEmails.at(-1).text, /code is \d{6}/)
 })
 
-test('clear removes the pending resend cookie after verification', async () => {
-  Date.now = () => 1_183_000
+test('signup code verification confirms the user and returns a Supabase sign-in token hash', async () => {
+  Date.now = () => 1_153_000
   const signupResponse = responseRecorder()
   await handler(request({
     action: 'signup',
     purpose: 'signup',
-    email: 'clear-user@example.test',
+    email: 'verify-user@example.test',
     password: 'Secure-test-password-123',
-    firstName: 'Clear',
+    firstName: 'Verify',
     lastName: 'User',
-    memberId: '1011121314',
+    memberId: '1012123434',
   }), signupResponse)
 
+  const code = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
   const cookie = signupResponse.headers['Set-Cookie'].split(';')[0]
   const res = responseRecorder()
-  await handler(request({ action: 'clear', purpose: 'signup', email: 'clear-user@example.test' }, { cookie }), res)
+  await handler(request({ action: 'verify', purpose: 'signup', email: 'verify-user@example.test', code }, { cookie }), res)
 
   assert.equal(res.statusCode, 200)
+  assert.equal(res.body.tokenHash, 'mock-supabase-token-hash')
+  assert.equal(authRequests.at(-2).action, 'generateLink')
+  assert.equal(authRequests.at(-2).body.type, 'magiclink')
+  assert.equal(authRequests.at(-1).action, 'updateUser')
+  assert.equal(authRequests.at(-1).body.email_confirm, true)
   assert.match(res.headers['Set-Cookie'], /Max-Age=0/)
+})
+
+test('recovery code verification returns a Supabase recovery token hash', async () => {
+  Date.now = () => 1_183_000
+  const recoveryResponse = responseRecorder()
+  await handler(request({ action: 'recovery', purpose: 'recovery', email: 'reset-user@example.test' }), recoveryResponse)
+
+  const code = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
+  const cookie = recoveryResponse.headers['Set-Cookie'].split(';')[0]
+  const res = responseRecorder()
+  await handler(request({ action: 'verify', purpose: 'recovery', email: 'reset-user@example.test', code }, { cookie }), res)
+
+  assert.equal(res.statusCode, 200)
+  assert.equal(res.body.tokenHash, 'mock-supabase-token-hash')
+  assert.equal(authRequests.at(-1).body.type, 'recovery')
 })
 
 test('rejects requests from a different origin before calling providers', async () => {
@@ -160,6 +201,23 @@ test('rejects requests from a different origin before calling providers', async 
   }), res)
 
   assert.equal(res.statusCode, 403)
+  assert.equal(authRequests.length, authCount)
+  assert.equal(sentEmails.length, resendCount)
+})
+
+test('denies code sends when the persistent Supabase rate limit is exhausted', async () => {
+  rateLimitAllowed = false
+  const authCount = authRequests.length
+  const resendCount = sentEmails.length
+  const res = responseRecorder()
+  await handler(request({
+    action: 'recovery',
+    purpose: 'recovery',
+    email: 'rate-limited@example.test',
+  }), res)
+  rateLimitAllowed = true
+
+  assert.equal(res.statusCode, 429)
   assert.equal(authRequests.length, authCount)
   assert.equal(sentEmails.length, resendCount)
 })

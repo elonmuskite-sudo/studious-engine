@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import { isAdminRole } from './appwrite'
 import {
   getMemberProfile,
   isSupabaseConfigured,
-  clearPendingEmailCode,
   resendEmailCode,
   startPasswordRecoveryCode,
   startSignupEmailCode,
@@ -53,6 +52,8 @@ function generateNexusId() {
   return `10${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`
 }
 
+// Context provider children are supplied by React composition, not an external prop API.
+// eslint-disable-next-line react/prop-types
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -130,7 +131,6 @@ export function AuthProvider({ children }) {
     if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
     const { user: authUser } = await verifyEmailOtp(email, token, purpose)
     if (!authUser) throw new Error('Supabase did not return a verified account.')
-    await clearPendingEmailCode(email, purpose).catch(() => {})
     const profile = await getMemberProfile(authUser.id)
     const sessionUser = normalizeUser({
       ...profile,

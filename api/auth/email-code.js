@@ -1,10 +1,10 @@
-import { createDecipheriv, createHash, createCipheriv, randomBytes } from 'node:crypto'
+import { createDecipheriv, createHash, createCipheriv, randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 
 const COOKIE_NAME = 'nexus_auth_email_code'
 const CODE_TTL_SECONDS = 600
-const RESEND_COOLDOWN_MS = 60_000
-const recentSends = new Map()
+const RATE_LIMIT_WINDOW_SECONDS = 60
+const RATE_LIMIT_PER_WINDOW = 3
 
 function json(res, status, body) {
   res.setHeader('Cache-Control', 'no-store')
@@ -75,12 +75,23 @@ function clearCodeCookie(req, res) {
   res.setHeader('Set-Cookie', `${COOKIE_NAME}=; Path=/api/auth; Max-Age=0; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`)
 }
 
-function checkCooldown(key) {
-  const now = Date.now()
-  const lastSentAt = recentSends.get(key) || 0
-  if (now - lastSentAt < RESEND_COOLDOWN_MS) return false
-  recentSends.set(key, now)
-  return true
+async function checkSendLimit(admin, purpose, email) {
+  const bucketKey = createHash('sha256').update(`${purpose}:${email}`).digest('hex')
+  const { data, error } = await admin.rpc('consume_auth_email_code_limit', {
+    p_bucket_key: bucketKey,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+    p_limit: RATE_LIMIT_PER_WINDOW,
+  })
+  if (error) throw new Error('Email code rate limiting is unavailable. Apply the latest Supabase schema migration.')
+  return data === true
+}
+
+function codeMatches(provided, expected) {
+  const providedBytes = Buffer.from(String(provided || ''))
+  const expectedBytes = Buffer.from(String(expected || ''))
+  return providedBytes.length === 6
+    && expectedBytes.length === 6
+    && timingSafeEqual(providedBytes, expectedBytes)
 }
 
 async function sendWithResend({ email, code, purpose, apiKey, from }) {
@@ -142,32 +153,72 @@ export default async function handler(req, res) {
   }
 
   const admin = createAdminClient(supabaseUrl, serviceRoleKey)
-  const rateKey = `${purpose}:${email}`
 
   if (action === 'resend') {
     const saved = decryptPayload(getCookie(req, COOKIE_NAME), serviceRoleKey)
     if (!saved || saved.email !== email || saved.purpose !== purpose || saved.expiresAt < Date.now()) {
       return json(res, 200, { ok: true })
     }
-    if (!checkCooldown(rateKey)) return json(res, 429, { error: 'Please wait a minute before requesting another code.' })
+    let allowed
+    try {
+      allowed = await checkSendLimit(admin, purpose, email)
+    } catch (error) {
+      return json(res, 503, { error: error.message })
+    }
+    if (!allowed) return json(res, 429, { error: 'Please wait a minute before requesting another code.' })
     try {
       await sendWithResend({ email, code: saved.code, purpose, apiKey: resendApiKey, from: sender })
+      saved.attempts = 0
+      setCodeCookie(req, res, saved, serviceRoleKey)
       return json(res, 200, { ok: true })
     } catch (error) {
       return json(res, 502, { error: error.message })
     }
   }
 
-  if (action === 'clear') {
+  if (action === 'verify') {
     const saved = decryptPayload(getCookie(req, COOKIE_NAME), serviceRoleKey)
-    if (saved?.email === email && saved.purpose === purpose) clearCodeCookie(req, res)
-    return json(res, 200, { ok: true })
+    if (!saved || saved.email !== email || saved.purpose !== purpose || saved.expiresAt < Date.now()) {
+      clearCodeCookie(req, res)
+      return json(res, 400, { error: 'This code expired. Request a new one.' })
+    }
+    if (saved.attempts >= 5) {
+      clearCodeCookie(req, res)
+      return json(res, 429, { error: 'Too many incorrect attempts. Request a new code.' })
+    }
+    if (!codeMatches(body.code, saved.code)) {
+      saved.attempts += 1
+      setCodeCookie(req, res, saved, serviceRoleKey)
+      return json(res, 400, { error: 'That code is not valid. Check it and try again.' })
+    }
+
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: purpose === 'signup' ? 'magiclink' : 'recovery',
+      email,
+    })
+    if (error || !data?.properties?.hashed_token) {
+      return json(res, 502, { error: 'Could not complete verification. Please try again.' })
+    }
+
+    if (purpose === 'signup') {
+      const { error: confirmError } = await admin.auth.admin.updateUserById(saved.userId, { email_confirm: true })
+      if (confirmError) return json(res, 502, { error: 'Could not confirm the account. Please try the code again.' })
+    }
+
+    clearCodeCookie(req, res)
+    return json(res, 200, { ok: true, tokenHash: data.properties.hashed_token })
   }
 
   if ((action !== 'signup' && action !== 'recovery') || action !== purpose) {
     return json(res, 400, { error: 'Invalid email code action.' })
   }
-  if (!checkCooldown(rateKey)) return json(res, 429, { error: 'Please wait a minute before requesting another code.' })
+  let allowed
+  try {
+    allowed = await checkSendLimit(admin, purpose, email)
+  } catch (error) {
+    return json(res, 503, { error: error.message })
+  }
+  if (!allowed) return json(res, 429, { error: 'Please wait a minute before requesting another code.' })
 
   let generated
   if (purpose === 'signup') {
@@ -178,37 +229,33 @@ export default async function handler(req, res) {
     if (password.length < 8 || firstName.length > 128 || lastName.length > 128 || !/^10\d{8}$/.test(memberId)) {
       return json(res, 400, { error: 'Provide a valid name, an 8-character password, and a valid member ID.' })
     }
-    const { data, error } = await admin.auth.admin.generateLink({
-      type: 'signup',
+    const { data, error } = await admin.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: { first_name: firstName, last_name: lastName, member_id: memberId },
-        redirectTo: `${origin}/verify-email`,
-      },
+      email_confirm: false,
+      user_metadata: { first_name: firstName, last_name: lastName, member_id: memberId },
     })
     if (error) return json(res, 400, { error: error.message })
-    generated = data
+    generated = { user: data.user }
   } else {
-    const { data, error } = await admin.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: { redirectTo: `${origin}/verify-email?purpose=recovery` },
-    })
-    if (error) {
-      if (error.code === 'user_not_found') return json(res, 200, { ok: true })
-      return json(res, 502, { error: 'Unable to send a recovery code right now.' })
-    }
-    generated = data
+    const { data, error } = await admin
+      .from('members')
+      .select('auth_user_id')
+      .eq('email', email)
+      .maybeSingle()
+    if (error) return json(res, 502, { error: 'Unable to send a recovery code right now.' })
+    if (!data?.auth_user_id) return json(res, 200, { ok: true })
+    generated = { user: { id: data.auth_user_id } }
   }
 
-  const code = String(generated?.properties?.email_otp || '')
-  if (!/^\d{6}$/.test(code)) return json(res, 502, { error: 'Supabase did not generate a valid email code.' })
+  const code = String(randomInt(0, 1_000_000)).padStart(6, '0')
 
   setCodeCookie(req, res, {
     email,
     purpose,
     code,
+    userId: generated.user.id,
+    attempts: 0,
     expiresAt: Date.now() + CODE_TTL_SECONDS * 1000,
   }, serviceRoleKey)
 

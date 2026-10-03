@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexus-chat-v2';
+const CACHE_NAME = 'nexus-chat-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.svg'];
 
 self.addEventListener('install', (event) => {
@@ -23,16 +23,30 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
-            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)));
+            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {}));
           }
           return response;
         })
-        .catch(async () => (await caches.match(request)) || caches.match('/index.html'))
+        .catch(async () => {
+          const cachedPage = await caches.match(request).catch(() => undefined)
+          if (cachedPage) return cachedPage
+          const appShell = await caches.match('/index.html').catch(() => undefined)
+          return appShell || new Response('Nexus Chat is temporarily unavailable offline.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          })
+        })
     );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(request)
+      .catch(() => undefined)
+      .then((cached) => cached || fetch(request))
+      .catch(() => new Response('This resource is temporarily unavailable.', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      }))
   );
 });

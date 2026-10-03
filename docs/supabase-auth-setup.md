@@ -1,10 +1,10 @@
 # Supabase Auth and Resend setup
 
-The application uses Supabase Auth for credentials and recovery, Supabase `members` rows for Nexus profiles, and Appwrite for the existing chat data. A Vercel serverless function requests Supabase OTPs and sends signup, resend, and recovery codes directly through the Resend API. `RESEND_API_KEY` is server-only and must never be exposed through a `VITE_` variable or browser bundle.
+The application uses Supabase Auth for credentials and recovery, Supabase `members` rows for Nexus profiles, and Appwrite for the existing chat data. A Vercel serverless function creates an unconfirmed Supabase user, generates a six-digit code, and sends signup, resend, and recovery codes directly through the Resend API. After validating the code, it exchanges a short-lived Supabase token hash for the browser auth session. `RESEND_API_KEY` is server-only and must never be exposed through a `VITE_` variable or browser bundle.
 
 ## 1. Apply the database migration
 
-Review and run `supabase-schema.sql` in the Supabase SQL Editor before deploying the new auth flow. It provisions a member/profile row for each Supabase Auth user, scopes member access with RLS, and removes public access to the legacy password column.
+Review and run `supabase-schema.sql` in the Supabase SQL Editor before deploying the new auth flow. It provisions a member/profile row for each Supabase Auth user, scopes member access with RLS, removes public access to the legacy password column, and installs the persistent email-code rate-limit RPC required by the Vercel email endpoint.
 
 The migration retains the old nullable `members.password` column temporarily to avoid silently destroying legacy data. New accounts do not write to it. Existing browser/Appwrite accounts without verified email addresses cannot be automatically linked safely; have those users register with an email and follow a supervised recovery/relink process. After legacy account disposition, remove the old column with:
 
@@ -31,7 +31,7 @@ In Supabase Dashboard, open **Authentication → URL Configuration**:
 - Redirect URLs: `https://nexus-chat-world.com/verify-email?purpose=recovery`
 - For local development, add `http://localhost:5173/verify-email` and `http://localhost:5173/verify-email?purpose=recovery`.
 
-Keep **Confirm email** enabled in **Authentication → Providers → Email** and set the email OTP expiry to 600 seconds. The app uses Supabase Admin `generateLink` to create OTPs and verifies them with Supabase Auth; Supabase's built-in email templates are not used for these flows.
+Keep **Confirm email** enabled in **Authentication → Providers → Email**. App verification codes expire after 10 minutes, allow at most five guesses, and are rate-limited by the database RPC installed by the schema migration. Supabase's built-in email templates are not used for these flows.
 
 ## 3. Configure Resend API
 
