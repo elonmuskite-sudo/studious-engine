@@ -38,6 +38,8 @@ const PUBLIC_KEYS = new Set([
 const LEGACY_PUBLIC_SECRETS = ['VITE_APPWRITE_API_KEY', 'VITE_ADMIN_PASSWORD']
 const PLACEHOLDER_HINTS = [
   'your_',
+  'your-real-project-id',
+  'your-real-team-id',
   'actual_project_id',
   'actual_team_id',
   'example.com',
@@ -134,16 +136,25 @@ async function upsertProductionVariables(values, projectId, envs) {
     const existing = getProductionMatch(envs, key)
 
     if (existing) {
-      await request(`/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(existing.id)}`, {
-        method: 'PATCH',
-        body: variable,
-      })
+      try {
+        await request(`/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(existing.id)}`, {
+          method: 'PATCH',
+          body: { value: values[key], target: ['production'] },
+        })
+      } catch (error) {
+        throw new Error(`Failed to update ${key}: ${error.message}`)
+      }
       console.log(`[vercel-env] Updated ${key} (production)`)
     } else {
-      const created = await request(projectPath, {
-        method: 'POST',
-        body: { key, ...variable },
-      })
+      let created
+      try {
+        created = await request(projectPath, {
+          method: 'POST',
+          body: { key, ...variable },
+        })
+      } catch (error) {
+        throw new Error(`Failed to create ${key}: ${error.message}`)
+      }
       if (created.id) envs.push({ key, ...variable, id: created.id })
       console.log(`[vercel-env] Added ${key} (production)`)
     }
