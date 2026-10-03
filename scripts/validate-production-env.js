@@ -29,7 +29,6 @@ const PLACEHOLDER_HINTS = [
   'your-project',
   'your_supabase',
   'your_domain',
-  'nexus-chat-world.com',
 ]
 
 function readEnvFile(filePath) {

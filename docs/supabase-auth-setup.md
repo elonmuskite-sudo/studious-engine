@@ -41,7 +41,7 @@ In Resend, use the verified domain `nexus-chat-world.com` and create an API key 
 - Port: `465` with SSL, or `587` with STARTTLS
 - Username: `resend`
 - Password: the Resend API key
-- Sender email: `noreply@nexus-chat-world.com`
+- Sender email: `admin@nexus-chat-world.com`
 - Sender name: `Nexus Chat`
 
 Use the password reset template with Supabase's `{{ .ConfirmationURL }}` link. Test the confirmation and recovery messages from Supabase Auth after saving SMTP settings.

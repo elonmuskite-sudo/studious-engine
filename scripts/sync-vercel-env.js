@@ -17,6 +17,7 @@ const ENV_KEYS = [
   'VITE_SUPABASE_ANON_KEY',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
+  'RESEND_FROM',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD',
   'ADMIN_MEMBER_ID',
@@ -29,6 +30,7 @@ const PUBLIC_KEYS = new Set([
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
   'SUPABASE_URL',
+  'RESEND_FROM',
   'ADMIN_EMAIL',
   'ADMIN_MEMBER_ID',
 ])
@@ -45,7 +47,6 @@ const PLACEHOLDER_HINTS = [
   'your-project',
   'your_supabase',
   'your_domain',
-  'nexus-chat-world.com',
 ]
 
 function loadJson(filePath, label) {
