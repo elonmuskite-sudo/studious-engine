@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexus-chat-v3';
+const CACHE_NAME = 'nexus-chat-v4';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.svg'];
 
 self.addEventListener('install', (event) => {
