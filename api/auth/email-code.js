@@ -192,17 +192,17 @@ export default async function handler(req, res) {
       return json(res, 400, { error: 'That code is not valid. Check it and try again.' })
     }
 
+    if (purpose === 'signup') {
+      const { error: confirmError } = await admin.auth.admin.updateUserById(saved.userId, { email_confirm: true })
+      if (confirmError) return json(res, 502, { error: 'Could not confirm the account. Please try the code again.' })
+    }
+
     const { data, error } = await admin.auth.admin.generateLink({
       type: purpose === 'signup' ? 'magiclink' : 'recovery',
       email,
     })
     if (error || !data?.properties?.hashed_token) {
       return json(res, 502, { error: 'Could not complete verification. Please try again.' })
-    }
-
-    if (purpose === 'signup') {
-      const { error: confirmError } = await admin.auth.admin.updateUserById(saved.userId, { email_confirm: true })
-      if (confirmError) return json(res, 502, { error: 'Could not confirm the account. Please try the code again.' })
     }
 
     clearCodeCookie(req, res)

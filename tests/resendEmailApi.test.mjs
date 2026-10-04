@@ -170,10 +170,10 @@ test('signup code verification confirms the user and returns a Supabase sign-in 
 
   assert.equal(res.statusCode, 200)
   assert.equal(res.body.tokenHash, 'mock-supabase-token-hash')
-  assert.equal(authRequests.at(-2).action, 'generateLink')
-  assert.equal(authRequests.at(-2).body.type, 'magiclink')
-  assert.equal(authRequests.at(-1).action, 'updateUser')
-  assert.equal(authRequests.at(-1).body.email_confirm, true)
+  assert.equal(authRequests.at(-2).action, 'updateUser')
+  assert.equal(authRequests.at(-2).body.email_confirm, true)
+  assert.equal(authRequests.at(-1).action, 'generateLink')
+  assert.equal(authRequests.at(-1).body.type, 'magiclink')
   assert.match(res.headers['Set-Cookie'], /Max-Age=0/)
 })
 

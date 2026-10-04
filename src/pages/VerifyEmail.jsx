@@ -61,7 +61,7 @@ export default function VerifyEmail() {
 
     setVerifying(true)
     try {
-      await verifyEmailCode(email, code)
+      await verifyEmailCode(email, code, purpose)
       clearPendingEmail()
       try {
         sessionStorage.removeItem(PENDING_PURPOSE_KEY)
