@@ -346,6 +346,7 @@ drop policy if exists "Members can update their own account" on public.members;
 drop policy if exists "Members can delete their own account" on public.members;
 drop policy if exists "Members read own profile" on public.members;
 drop policy if exists "Admins read member profiles" on public.members;
+drop policy if exists "Members update own profile" on public.members;
 create policy "Members read own profile" on public.members
   for select to authenticated using (auth_user_id = auth.uid());
 create policy "Admins read member profiles" on public.members
@@ -358,6 +359,7 @@ drop policy if exists "Profiles are readable by their owner" on public.profiles;
 drop policy if exists "Members can create their own profile" on public.profiles;
 drop policy if exists "Members can update their own profile" on public.profiles;
 drop policy if exists "Members can delete their own profile" on public.profiles;
+drop policy if exists "Members update own profile" on public.profiles;
 create policy "Members read own profile" on public.profiles
   for select to authenticated using (id = public.current_member_profile_id());
 create policy "Members update own profile" on public.profiles
