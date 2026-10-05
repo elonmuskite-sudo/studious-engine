@@ -158,6 +158,12 @@ function getCtx() {
 }
 
 export async function playNotificationTone(toneId = 'chime', volume = 0.5) {
+  if (typeof navigator !== 'undefined'
+    && navigator.userActivation
+    && !navigator.userActivation.hasBeenActive) {
+    return false
+  }
+
   const ctx = getCtx()
   if (!ctx) return false
 
