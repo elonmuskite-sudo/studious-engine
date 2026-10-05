@@ -43,8 +43,6 @@ export default function ChatLayout() {
     navigate(routes[tab] || '/app')
   }, [navigate])
 
-  const showMobileSidebar = useMemo(() => activeTab !== 'chats', [activeTab])
-
   return (
     <div className="relative h-screen flex flex-col bg-background overflow-hidden">
       <Header showSignIn={false}>
@@ -59,16 +57,6 @@ export default function ChatLayout() {
         <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
           <Outlet />
         </div>
-      </div>
-
-      <div className="md:hidden">
-        {showMobileSidebar && (
-          <div className="fixed inset-0 z-50 bg-background">
-            <div className="h-full flex flex-col">
-              <ChatSidebar activeTab={activeTab} onTabChange={handleTabChange} />
-            </div>
-          </div>
-        )}
       </div>
 
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
