@@ -2,7 +2,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { syncAppwriteSchema, verifyAppwriteSetup } from '../src/lib/appwriteProvision.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -63,32 +62,6 @@ function isPlaceholder(value) {
   return PLACEHOLDER_HINTS.some((hint) => text.includes(hint))
 }
 
-async function ensureAppwriteSchema() {
-  const config = {
-    endpoint: getEnvValue('VITE_APPWRITE_ENDPOINT') || getEnvValue('APPWRITE_ENDPOINT'),
-    projectId: getEnvValue('VITE_APPWRITE_PROJECT_ID') || getEnvValue('APPWRITE_PROJECT_ID'),
-    databaseId: getEnvValue('VITE_APPWRITE_DATABASE_ID') || getEnvValue('APPWRITE_DATABASE_ID'),
-    apiKey: getEnvValue('APPWRITE_API_KEY'),
-    adminEmail: getEnvValue('ADMIN_EMAIL'),
-    adminPassword: getEnvValue('ADMIN_PASSWORD'),
-    adminMemberId: getEnvValue('ADMIN_MEMBER_ID'),
-  }
-
-  if (!config.endpoint || !config.projectId || !config.databaseId || !config.apiKey) {
-    console.warn('[env:validate] Appwrite config missing; skipping schema auto-provisioning.')
-    return
-  }
-
-  const result = await syncAppwriteSchema(config, { apply: true, provisionAdmin: true })
-  const verified = await verifyAppwriteSetup(config)
-
-  if (!verified.ok) {
-    throw new Error(`Appwrite verification failed: ${verified.checks.filter((check) => !check.pass).map((check) => check.name).join(', ')}`)
-  }
-
-  console.log(`[env:validate] Appwrite schema sync complete: missing=${result.summary.missingCount}, created=${result.summary.createdCount}`)
-}
-
 async function main() {
   const values = Object.fromEntries(REQUIRED_KEYS.map((key) => [key, getEnvValue(key)]))
   const isStrictDeploy = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production')
@@ -112,7 +85,6 @@ async function main() {
     console.log('[env:validate] Production env validation passed.')
   }
 
-  await ensureAppwriteSchema()
 }
 
 main().catch((error) => {

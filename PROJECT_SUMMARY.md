@@ -43,7 +43,7 @@ Nexus Chat is a modern messaging and community experience built with React, Vite
 - The app uses a hybrid persistence strategy: Supabase is the preferred backend for member accounts, while localStorage remains a fallback for local development and offline resilience.
 - The theme system is persistent via localStorage and applies across the public and authenticated experience.
 - The UI uses CSS-driven animations instead of package-heavy motion libraries for stability.
-- The project includes an SQL schema for member persistence in [supabase-schema.sql](supabase-schema.sql).
+- Supabase schema is maintained as versioned migrations under [supabase/migrations](supabase/migrations); database changes are applied only with the explicit operator CLI, never during a web build.
 
 ## Current Feature Set
 - Secure member registration with automatically generated member number

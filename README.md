@@ -6,7 +6,7 @@ Supabase Auth handles account credentials and password recovery. Appwrite remain
 
 ## Vercel environment variables
 
-The Vercel sync command uploads the generated environment values to the Production target, encrypts private credentials, and removes the obsolete `VITE_APPWRITE_API_KEY` and `VITE_ADMIN_PASSWORD` variables. It requires a Vercel access token and project ID; the token is read from `VERCEL_TOKEN` and is never written to project files or printed.
+The Vercel sync command uploads application environment values to the Production target, encrypts private API credentials, and removes obsolete public-secret variables. It requires a Vercel access token and project ID; the token is read from `VERCEL_TOKEN` and is never written to project files or printed. Builds and browser-facing code do not execute schema changes. Database changes live in versioned files under `supabase/migrations/` and run only through the explicit, operator-invoked `npm run db:setup` command using a local `SUPABASE_DB_URL`. That highly privileged PostgreSQL URL is never uploaded to Vercel or included in generated runtime config.
 
 1. In Vercel, open your account or team settings, select **Tokens**, and create a new token scoped to the team that owns this project. Revoke the token that was pasted into the previous command/README excerpt. Set an expiration appropriate for your deployment workflow.
 2. Find the project ID in the project's **Settings > General** page. For a team project, also find the team ID.

@@ -19,4 +19,4 @@ description: Standardized update workflow for Nexus Chat.
 Rules:
 - Never break the hybrid auth persistence (Supabase + localStorage).
 - Maintain the PWA meta tags in `index.html` for iOS installation support.
-- If a new Supabase table or policy is needed, document it in `supabase-schema.sql` first.
+- If Supabase schema changes are needed, add a new timestamped SQL migration under `supabase/migrations/`; never edit an applied migration or execute schema SQL from browser-facing code/build validation.

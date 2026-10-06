@@ -8,8 +8,8 @@ const rootDir = path.resolve(__dirname, '..')
 
 const envFiles = [
   '.env',
-  '.env.local',
   '.env.production',
+  '.env.local',
   '.env.production.local',
 ]
 
@@ -28,7 +28,6 @@ const DEFAULTS = IS_VERCEL_DEPLOY ? {
   VITE_SUPABASE_ANON_KEY: '',
   SUPABASE_ANON_KEY: '',
   SUPABASE_SERVICE_ROLE_KEY: '',
-  SUPABASE_DB_URL: '',
   RESEND_API_KEY: '',
   RESEND_FROM: '',
   ADMIN_EMAIL: '',
@@ -47,7 +46,6 @@ const DEFAULTS = IS_VERCEL_DEPLOY ? {
   VITE_SUPABASE_ANON_KEY: '',
   SUPABASE_ANON_KEY: '',
   SUPABASE_SERVICE_ROLE_KEY: '',
-  SUPABASE_DB_URL: '',
   RESEND_API_KEY: '',
   RESEND_FROM: '',
   ADMIN_EMAIL: '',
