@@ -7,24 +7,26 @@ import { useAuth } from '../../lib/AuthContext'
 import { mockChats } from '../../data/mockChats'
 import { createChat, getChats, searchUserByNexusId, formatNexusId } from '../../lib/persistence'
 
+// eslint-disable-next-line react/prop-types
 export default function ChatSidebar({ activeTab, onTabChange }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [chats, setChats] = useState(mockChats)
   const [foundUser, setFoundUser] = useState(null)
   const [isSearching, setIsSearching] = useState(false)
-  const { logout } = useAuth()
+  const [chatError, setChatError] = useState('')
+  const { user } = useAuth()
   const navigate = useNavigate()
   const { chatId } = useParams()
 
   useEffect(() => {
     const refreshChats = async () => {
-      const nextChats = await getChats()
+      const nextChats = await getChats(user?.id)
       setChats(Array.isArray(nextChats) ? nextChats : [])
     }
     refreshChats()
     window.addEventListener('nexus-chat:updated', refreshChats)
     return () => window.removeEventListener('nexus-chat:updated', refreshChats)
-  }, [])
+  }, [user?.id])
 
   // Function to detect if the search query is a Nexus number (format: 10-xxxx-xxxx or 10xxxxxxxx)
   const isNexusNumber = (query) => {
@@ -39,30 +41,51 @@ export default function ChatSidebar({ activeTab, onTabChange }) {
     
     if (isNexusNumber(query)) {
       setIsSearching(true)
-      const user = await searchUserByNexusId(query)
-      setFoundUser(user)
-      setIsSearching(false)
+      setChatError('')
+      try {
+        const recipient = await searchUserByNexusId(query)
+        setFoundUser(recipient)
+      } catch (error) {
+        setFoundUser(null)
+        setChatError(error?.message || 'Recipient lookup failed.')
+      } finally {
+        setIsSearching(false)
+      }
     } else {
       setFoundUser(null)
     }
   }
 
-  const handleStartChatWithUser = async (user) => {
-    const chats = await getChats()
-    const chatTitle = user.fullName || `${user.firstName} ${user.lastName}`.trim() || user.email
-    const existing = chats.find(c => c.title === chatTitle)
-    if (existing) {
-      navigate(`/app/chat/${existing.id}`)
-    } else {
-      const newChat = await createChat({
-        title: chatTitle,
-        type: 'private',
-        avatar_url: user.avatarUrl || null,
+  const handleStartChatWithUser = async (recipient) => {
+    setChatError('')
+    try {
+      if (!user?.id || !user.nexusId) throw new Error('Sign in again before starting a conversation.')
+      if (!recipient?.id || String(user.id) === String(recipient.id)) throw new Error('Choose a different Nexus member to start a chat.')
+      const chats = await getChats(user.id)
+      const participantIds = [String(user.id), String(recipient.id)]
+      participantIds.sort()
+      const existing = chats.find((chat) => {
+        const ids = (chat.participant_ids || []).map(String).sort()
+        return ids.length === participantIds.length && ids.every((id, index) => id === participantIds[index])
       })
-      navigate(`/app/chat/${newChat.id}`)
+      if (existing) {
+        navigate(`/app/chat/${existing.id}`)
+      } else {
+        const chatTitle = recipient.fullName || `${recipient.firstName} ${recipient.lastName}`.trim() || recipient.nexusIdDisplay
+        const newChat = await createChat({
+          title: chatTitle,
+          type: 'private',
+          avatar_url: recipient.avatarUrl || null,
+          owner_id: user.id,
+          participantIds: [user.id, recipient.id],
+        })
+        navigate(`/app/chat/${newChat.id}`)
+      }
+      setSearchQuery('')
+      setFoundUser(null)
+    } catch (error) {
+      setChatError(error?.message || 'Could not start the conversation.')
     }
-    setSearchQuery('')
-    setFoundUser(null)
   }
 
   const filteredChats = chats.filter(chat =>
@@ -71,11 +94,6 @@ export default function ChatSidebar({ activeTab, onTabChange }) {
 
   const handleChatSelect = (chat) => {
     navigate(`/app/chat/${chat.id}`)
-  }
-
-  const handleCreateChat = async () => {
-    const newChat = await createChat({ title: 'New chat', type: 'private' })
-    navigate(`/app/chat/${newChat.id}`)
   }
 
   const showChatList = activeTab === 'chats'
@@ -100,6 +118,7 @@ export default function ChatSidebar({ activeTab, onTabChange }) {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            {chatError && <p role="alert" className="mx-4 mb-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{chatError}</p>}
             {/* Show found user when Nexus number is detected */}
             {foundUser && (
               <div className="p-4 border-b border-border bg-primary/5">

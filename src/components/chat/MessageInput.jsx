@@ -2,9 +2,11 @@ import { useState, useRef } from 'react'
 import { FaceSmileIcon, PaperClipIcon, MicrophoneIcon, PaperAirplaneIcon, StopIcon } from '@heroicons/react/24/solid'
 import StickerPicker from './StickerPicker'
 
+// eslint-disable-next-line react/prop-types
 export default function MessageInput({ onSendMessage }) {
   const [inputText, setInputText] = useState('')
   const [showStickers, setShowStickers] = useState(false)
+  const [isSending, setIsSending] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const fileInputRef = useRef(null)
@@ -12,11 +14,15 @@ export default function MessageInput({ onSendMessage }) {
   const recordingIntervalRef = useRef(null)
   const audioChunksRef = useRef([])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (inputText.trim()) {
-      onSendMessage({ content: inputText.trim(), type: 'text' })
-      setInputText('')
+    if (!inputText.trim() || isSending) return
+    setIsSending(true)
+    try {
+      const sent = await onSendMessage({ content: inputText.trim(), type: 'text' })
+      if (sent) setInputText('')
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -167,6 +173,7 @@ export default function MessageInput({ onSendMessage }) {
             <input
               type="text"
               value={inputText}
+              disabled={isSending}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Type a message..."
               className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-muted border-none rounded-full text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary transition text-sm sm:text-base"
@@ -177,6 +184,7 @@ export default function MessageInput({ onSendMessage }) {
           {inputText.trim() ? (
             <button
               type="submit"
+              disabled={isSending}
               className="p-2 sm:p-2.5 bg-primary hover:bg-primary/90 rounded-full text-primary-foreground transition flex-shrink-0"
               title="Send message"
             >

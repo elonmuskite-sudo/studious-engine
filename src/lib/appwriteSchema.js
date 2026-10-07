@@ -78,6 +78,7 @@ export const NEXUS_COLLECTIONS = [
     indexes: [
       { key: 'idx_chat_members_pair', type: 'unique', attributes: ['chat_id', 'profile_id'] },
       { key: 'idx_chat_members_chat_id', type: 'key', attributes: ['chat_id'] },
+      { key: 'idx_chat_members_profile_id', type: 'key', attributes: ['profile_id'] },
     ],
   },
   {

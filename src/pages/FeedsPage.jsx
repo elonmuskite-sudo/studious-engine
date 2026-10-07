@@ -15,7 +15,7 @@ import { HeartIcon as HeartIconOutline } from '@heroicons/react/24/outline';
 import Avatar from '../components/chat/Avatar';
 import { getFeeds, formatTimeAgo } from '../data/mockFeeds';
 import { useAuth } from '../lib/AuthContext';
-import { createChat, getChats, appendMessage, getContacts } from '../lib/persistence';
+import { createChat, getChats, sendChatMessage, getContacts, searchUserByNexusId } from '../lib/persistence';
 import UniversalEmojiPicker from '../components/chat/UniversalEmojiPicker';
 
 export default function FeedsPage() {
@@ -36,6 +36,7 @@ export default function FeedsPage() {
   const [commentInputs, setCommentInputs] = useState({});
   const [copiedStatus, setCopiedStatus] = useState(false);
   const [sharedStatus, setSharedStatus] = useState({});
+  const [shareError, setShareError] = useState('');
   const [activeReactCommentId, setActiveReactCommentId] = useState(null);
   const [pickerTarget, setPickerTarget] = useState(null);
   const navigate = useNavigate();
@@ -659,28 +660,36 @@ export default function FeedsPage() {
         };
 
         const handleSendToContact = async (contact) => {
-          const chats = await getChats();
-          let chat = chats.find(c => c.title === contact.name);
-          if (!chat) {
-            chat = await createChat({
-              title: contact.name,
-              type: 'private',
-              avatar_url: null,
-            });
+          setShareError('')
+          try {
+            const recipient = await searchUserByNexusId(contact.nexusId)
+            if (!recipient || !user?.id) throw new Error('Could not resolve this contact to a registered Nexus account.')
+            const chats = await getChats(user.id)
+            const participants = [String(user.id), String(recipient.id)].sort()
+            let chat = chats.find((item) => {
+              const ids = (item.participant_ids || []).map(String).sort()
+              return ids.length === participants.length && ids.every((id, index) => id === participants[index])
+            })
+            if (!chat) {
+              chat = await createChat({
+                title: recipient.fullName || contact.name,
+                type: 'private',
+                avatar_url: recipient.avatarUrl || null,
+                owner_id: user.id,
+                participantIds: participants,
+              })
+            }
+
+            const content = `📢 Shared post by ${activeShareFeed.userName}:\n\n"${activeShareFeed.content}"`
+            await sendChatMessage(chat.id, {
+              content,
+              type: 'text',
+              sender_id: String(user.id),
+            })
+            setSharedStatus(prev => ({ ...prev, [contact.id]: true }))
+          } catch (error) {
+            setShareError(error?.message || 'The post could not be delivered.')
           }
-          
-          const content = `📢 Shared post by ${activeShareFeed.userName}:\n\n"${activeShareFeed.content}"`;
-          
-          await appendMessage(chat.id, {
-            content,
-            type: 'text',
-            sender_id: 'me',
-          });
-          
-          setSharedStatus(prev => ({
-            ...prev,
-            [contact.id]: true
-          }));
         };
 
         return (
@@ -707,6 +716,7 @@ export default function FeedsPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {shareError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{shareError}</p>}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-foreground">Copy Link</h4>
                   <div className="flex items-center gap-2 bg-muted dark:bg-muted/50 p-2.5 rounded-xl border border-border">

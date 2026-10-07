@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChatBubbleLeftIcon, UserGroupIcon, PlusIcon, XMarkIcon, TrashIcon } from '@heroicons/react/24/solid'
 import Avatar from './Avatar'
-import { createChat, getChats, getContacts, addContact, deleteContact, formatNexusId } from '../../lib/persistence'
+import { useAuth } from '../../lib/AuthContext'
+import { createChat, getChats, getContacts, addContact, deleteContact, formatNexusId, searchUserByNexusId } from '../../lib/persistence'
 
 export default function ContactsPanel() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [contacts, setContacts] = useState([])
+  const [chatError, setChatError] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [newContactName, setNewContactName] = useState('')
   const [newContactNexusId, setNewContactNexusId] = useState('')
@@ -24,17 +27,32 @@ export default function ContactsPanel() {
   }, [])
 
   const handleStartChat = async (contact) => {
-    const chats = await getChats()
-    const existing = chats.find(c => c.title === contact.name)
-    if (existing) {
-      navigate(`/app/chat/${existing.id}`)
-    } else {
+    setChatError('')
+    try {
+      if (!user?.id) throw new Error('Sign in to start a conversation.')
+      const recipient = await searchUserByNexusId(contact.nexusId)
+      if (!recipient) throw new Error('This Nexus ID is not linked to a registered account.')
+      if (String(recipient.id) === String(user.id)) throw new Error('You cannot start a private chat with yourself.')
+      const chats = await getChats(user.id)
+      const participants = [String(user.id), String(recipient.id)].sort()
+      const existing = chats.find((chat) => {
+        const ids = (chat.participant_ids || []).map(String).sort()
+        return ids.length === participants.length && ids.every((id, index) => id === participants[index])
+      })
+      if (existing) {
+        navigate(`/app/chat/${existing.id}`)
+        return
+      }
       const newChat = await createChat({
-        title: contact.name,
+        title: recipient.fullName || contact.name,
         type: 'private',
-        avatar_url: null,
+        avatar_url: recipient.avatarUrl || null,
+        owner_id: user.id,
+        participantIds: participants,
       })
       navigate(`/app/chat/${newChat.id}`)
+    } catch (error) {
+      setChatError(error?.message || 'Could not start the conversation.')
     }
   }
 
@@ -81,6 +99,7 @@ export default function ContactsPanel() {
 
       {/* Contact List */}
       <div className="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto">
+        {chatError && <p role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{chatError}</p>}
         {contacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">

@@ -2,10 +2,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import ChatView from '../components/chat/ChatView'
 import { getChatById } from '../data/mockChats'
+import { useAuth } from '../lib/AuthContext'
 
 export default function ChatPage() {
   const { chatId } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [chat, setChat] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -16,7 +18,7 @@ export default function ChatPage() {
       try {
         setLoading(true)
         setError(null)
-        const nextChat = await getChatById(chatId)
+        const nextChat = await getChatById(chatId, user?.id)
         if (active) {
           setChat(nextChat)
           setLoading(false)
@@ -38,7 +40,7 @@ export default function ChatPage() {
       active = false
       window.removeEventListener('nexus-chat:updated', handleUpdate)
     }
-  }, [chatId])
+  }, [chatId, user?.id])
 
   useEffect(() => {
     if (!loading && !chat) {

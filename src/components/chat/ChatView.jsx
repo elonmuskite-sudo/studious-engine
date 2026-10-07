@@ -1,5 +1,6 @@
+/* eslint-disable react/prop-types */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { ArrowLeftIcon, PhoneIcon, EllipsisVerticalIcon, LockClosedIcon } from '@heroicons/react/24/solid'
+import { ArrowLeftIcon, PhoneIcon, LockClosedIcon } from '@heroicons/react/24/solid'
 import Avatar from './Avatar'
 import MessageInput from './MessageInput'
 import MessageBubble from './MessageBubble'
@@ -8,20 +9,21 @@ import { useSetting } from '../../hooks/useSetting'
 import { getWallpaperById } from '../../lib/wallpapers'
 import { encryptMessage, decryptMessage, isE2EEEnabled } from '../../lib/crypto/e2ee'
 import { useVoiceCall } from '../../hooks/useVoiceCall'
-import { appendMessage } from '../../lib/persistence'
-import { sendAppwriteMessage } from '../../lib/appwriteChat'
+import { sendChatMessage } from '../../lib/persistence'
 import { isAppwriteDataAvailable, ID } from '../../lib/appwrite'
-import { showIncomingNotification } from '../../lib/notifications'
+import { useAuth } from '../../lib/AuthContext'
 
+// eslint-disable-next-line react/prop-types
 export default function ChatView({ chat, onBack }) {
   const [messages, setMessages] = useState(chat?.messages || [])
   const [decryptedMessages, setDecryptedMessages] = useState({})
+  const [sendError, setSendError] = useState('')
   const messagesEndRef = useRef(null)
   const [chatWallpaper] = useSetting('chatWallpaper', 'nature')
   const wallpaper = getWallpaperById(chatWallpaper)
-  const [showMobileMenu, setShowMobileMenu] = useState(false)
 
   const voiceCall = useVoiceCall(chat.id)
+  const { user } = useAuth()
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -68,19 +70,34 @@ export default function ChatView({ chat, onBack }) {
   }, [messages, chat.id, decryptedMessages])
 
   const handleSendMessage = useCallback(async (messageData) => {
+    setSendError('')
+    if (!user?.id) {
+      setSendError('Sign in to send messages.')
+      return false
+    }
+    if (!isAppwriteDataAvailable()) {
+      setSendError('Message was not sent: the chat service is unavailable. Please try again when connected.')
+      return false
+    }
+
     let content = messageData.content || messageData
     const type = messageData.type || 'text'
     let encrypted = false
 
     if (isE2EEEnabled() && type === 'text') {
-      const result = await encryptMessage(chat.id, content)
-      content = result.content
-      encrypted = result.encrypted
+      try {
+        const result = await encryptMessage(chat.id, content)
+        content = result.content
+        encrypted = result.encrypted
+      } catch (error) {
+        setSendError(error?.message || 'Could not encrypt this message.')
+        return false
+      }
     }
 
     const newMessage = {
       id: isAppwriteDataAvailable() ? ID.unique() : Date.now().toString(),
-      sender_id: 'me',
+      sender_id: String(user.id),
       content,
       type,
       encrypted,
@@ -97,30 +114,15 @@ export default function ChatView({ chat, onBack }) {
       }))
     }
 
-    const savedMessage = await appendMessage(chat.id, newMessage)
-    setMessages((prev) => [...prev, savedMessage || newMessage])
-
-    if (chat.id && typeof window !== 'undefined') {
-      try {
-        await sendAppwriteMessage(chat.id, {
-          ...newMessage,
-          sender_id: newMessage.sender_id,
-        })
-      } catch {
-      }
+    try {
+      await sendChatMessage(chat.id, newMessage)
+      setMessages((prev) => prev.some((message) => message.id === newMessage.id) ? prev : [...prev, newMessage])
+    } catch (error) {
+      setSendError(error?.message || 'Message delivery failed. Please try again.')
+      return false
     }
-
-    const preview = type === 'text'
-      ? (messageData.content || messageData)
-      : `${type === 'file' ? 'Shared a file' : type === 'sticker' ? 'Sent a sticker' : type === 'image' ? 'Shared an image' : 'Shared media'} · ${messageData.file_name || 'Tap to view'}`
-
-    showIncomingNotification({
-      title: chat.title || 'New activity',
-      preview: preview.length > 80 ? `${preview.slice(0, 77)}...` : preview,
-      avatarUrl: chat.avatar_url || '/logo.png',
-      type,
-    })
-  }, [chat.id, chat.title, chat.avatar_url])
+    return true
+  }, [chat.id, user?.id])
 
   const wallpaperStyle = useMemo(() => (
     wallpaper.url
@@ -132,10 +134,6 @@ export default function ChatView({ chat, onBack }) {
         }
       : { background: wallpaper.preview || '#f3f4f6' }
   ), [wallpaper.url, wallpaper.preview])
-
-  const toggleMobileMenu = useCallback(() => {
-    setShowMobileMenu((prev) => !prev)
-  }, [])
 
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full bg-background">
@@ -172,13 +170,6 @@ export default function ChatView({ chat, onBack }) {
           >
             <PhoneIcon className="w-5 h-5" />
           </button>
-          <button
-            onClick={toggleMobileMenu}
-            className="p-2 hover:bg-muted rounded-full text-foreground transition"
-            title="More options"
-          >
-            <EllipsisVerticalIcon className="w-5 h-5" />
-          </button>
         </div>
       </div>
 
@@ -204,7 +195,7 @@ export default function ChatView({ chat, onBack }) {
                       ? (decryptedMessages[message.id] || '🔒 Decrypting...')
                       : message.content,
                   }}
-                  isOwn={message.sender_id === 'me'}
+                  isOwn={String(message.sender_id) === String(user?.id) || message.sender_id === 'me'}
                 />
               ))
             )}
@@ -213,6 +204,7 @@ export default function ChatView({ chat, onBack }) {
         </div>
       </div>
 
+      {sendError && <p role="alert" className="border-t border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{sendError}</p>}
       <MessageInput onSendMessage={handleSendMessage} />
 
       <VoiceCallOverlay chat={chat} voiceCall={voiceCall} />

@@ -18,6 +18,7 @@ const REQUIRED_FUNCTIONS = [
   'public.current_member_profile_id()',
   'public.current_member_is_admin()',
   'public.consume_auth_email_code_limit(text,integer,integer)',
+  'public.lookup_member_by_nexus_id(text)',
 ]
 const MIGRATION_TABLE = 'public.nexus_schema_migrations'
 

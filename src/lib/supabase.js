@@ -111,6 +111,38 @@ export async function getMemberProfile(userId) {
   return data
 }
 
+export async function findMemberByNexusId(nexusId) {
+  if (!supabase) throw new Error('Supabase Auth is not configured.')
+  const normalizedId = String(nexusId || '').replace(/\D/g, '')
+  if (!/^10\d{8}$/.test(normalizedId)) return null
+
+  const { data, error } = await supabase.rpc('lookup_member_by_nexus_id', {
+    p_member_id: normalizedId,
+  })
+  if (error) {
+    if (error.code === 'PGRST202' || String(error.message || '').includes('lookup_member_by_nexus_id')) {
+      throw new Error('Recipient lookup migration is not installed. An administrator must run the reviewed Supabase migrations first.')
+    }
+    throw error
+  }
+  const member = Array.isArray(data) ? data[0] : data
+  if (!member) return null
+  return {
+    id: member.id,
+    nexusId: member.member_id,
+    nexusIdDisplay: formatMemberId(member.member_id),
+    firstName: member.first_name,
+    lastName: member.last_name,
+    fullName: member.full_name,
+    avatarUrl: member.avatar_url || null,
+  }
+}
+
+function formatMemberId(value) {
+  const digits = String(value || '').replace(/\D/g, '')
+  return digits.length === 10 ? `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}` : digits
+}
+
 export async function updateMemberProfile(userId, updates) {
   if (!supabase) throw new Error('Supabase Auth is not configured.')
   const profileUpdates = {}
