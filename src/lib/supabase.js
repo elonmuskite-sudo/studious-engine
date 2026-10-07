@@ -47,15 +47,17 @@ export async function startSignupEmailCode({ email, password, firstName, lastNam
 
 export async function verifyEmailCode(email, token, type = 'signup') {
   if (!supabase) throw new Error('Supabase Auth is not configured.')
+  const purpose = type === 'recovery' ? 'recovery' : 'signup'
   const result = await requestEmailCode({
     action: 'verify',
-    purpose: type === 'recovery' ? 'recovery' : 'signup',
+    purpose,
     email,
     code: String(token || '').trim(),
   })
+  const verificationType = result.verificationType || (purpose === 'recovery' ? 'recovery' : 'magiclink')
   const { data, error } = await supabase.auth.verifyOtp({
     token_hash: result.tokenHash,
-    type: type === 'recovery' ? 'recovery' : 'magiclink',
+    type: verificationType,
   })
   if (error) throw error
   return data

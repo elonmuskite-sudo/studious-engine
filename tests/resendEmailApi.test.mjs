@@ -28,6 +28,18 @@ globalThis.fetch = async (request, options = {}) => {
     return new Response(JSON.stringify({ id: testUserId, email: body.email, user_metadata: body.user_metadata }), { status: 200 })
   }
 
+  if (url.pathname.endsWith('/auth/v1/admin/users') && options.method === 'GET') {
+    authRequests.push({ action: 'listUsers' })
+    return new Response(JSON.stringify({ users: [
+      { id: testUserId, email: 'verify-user@example.test' },
+      { id: testUserId, email: 'resend-user@example.test' },
+      { id: testUserId, email: 'recover-user@example.test' },
+      { id: testUserId, email: 'reset-user@example.test' },
+      { id: testUserId, email: 'rate-limited@example.test' },
+      { id: testUserId, email: 'new-user@example.test' },
+    ] }), { status: 200 })
+  }
+
   if (url.pathname.endsWith(`/auth/v1/admin/users/${testUserId}`) && options.method === 'PUT') {
     const body = JSON.parse(options.body)
     authRequests.push({ action: 'updateUser', body })
@@ -43,6 +55,11 @@ globalThis.fetch = async (request, options = {}) => {
       verification_type: body.type,
       user: { id: testUserId, email: body.email },
     }), { status: 200 })
+  }
+
+  if (url.pathname.endsWith('/auth/v1/admin/users/by-email') && options.method === 'GET') {
+    authRequests.push({ action: 'getUserByEmail', query: url.searchParams.get('email') })
+    return new Response(JSON.stringify({ user: { id: testUserId, email: 'expired-user@example.test' } }), { status: 200 })
   }
 
   if (url.pathname.endsWith('/rest/v1/members')) {
@@ -112,7 +129,7 @@ test('signup creates an unconfirmed Supabase user and sends a six-digit code thr
   assert.equal(JSON.stringify(res.body).includes(code), false)
 })
 
-test('resend reuses the pending code and sends it through Resend', async () => {
+test('resend generates a fresh code and updates the pending cookie', async () => {
   const signupResponse = responseRecorder()
   await handler(request({
     action: 'signup',
@@ -132,7 +149,8 @@ test('resend reuses the pending code and sends it through Resend', async () => {
 
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.body, { ok: true })
-  assert.match(sentEmails.at(-1).text, new RegExp(`code is ${originalCode}`))
+  const nextCode = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
+  assert.notEqual(nextCode, originalCode)
 })
 
 test('password recovery generates and sends a recovery OTP through Resend', async () => {
@@ -148,6 +166,32 @@ test('password recovery generates and sends a recovery OTP through Resend', asyn
   assert.deepEqual(res.body, { ok: true })
   assert.equal(sentEmails.at(-1).to[0], 'recover-user@example.test')
   assert.match(sentEmails.at(-1).text, /code is \d{6}/)
+})
+
+test('resend regenerates a fresh code when a stale cookie is missing or expired', async () => {
+  const email = 'expired-user@example.test'
+  const signupResponse = responseRecorder()
+  await handler(request({
+    action: 'signup',
+    purpose: 'signup',
+    email,
+    password: 'Secure-test-password-123',
+    firstName: 'Expired',
+    lastName: 'User',
+    memberId: '1012349876',
+  }), signupResponse)
+
+  const firstCode = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
+  const cookie = signupResponse.headers['Set-Cookie'].split(';')[0]
+  Date.now = () => 2_000_000
+  const res = responseRecorder()
+  await handler(request({ action: 'resend', purpose: 'signup', email }, { cookie }), res)
+
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(res.body, { ok: true })
+  const nextCode = sentEmails.at(-1).text.match(/code is (\d{6})/)[1]
+  assert.notEqual(nextCode, firstCode)
+  assert.ok(res.headers['Set-Cookie'])
 })
 
 test('signup code verification confirms the user and returns a Supabase sign-in token hash', async () => {

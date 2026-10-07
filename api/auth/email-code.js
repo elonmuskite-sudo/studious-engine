@@ -94,6 +94,12 @@ function codeMatches(provided, expected) {
     && timingSafeEqual(providedBytes, expectedBytes)
 }
 
+function generateVerificationCode(previousCode) {
+  const candidate = String(randomInt(0, 1_000_000)).padStart(6, '0')
+  if (!previousCode || candidate !== previousCode) return candidate
+  return String((Number.parseInt(candidate, 10) + 1) % 1_000_000).padStart(6, '0')
+}
+
 async function sendWithResend({ email, code, purpose, apiKey, from }) {
   const subject = purpose === 'signup' ? 'Verify your Nexus Chat email' : 'Reset your Nexus Chat password'
   const action = purpose === 'signup' ? 'verify your email address' : 'reset your password'
@@ -113,6 +119,24 @@ async function sendWithResend({ email, code, purpose, apiKey, from }) {
   })
 
   if (!response.ok) throw new Error('Email delivery failed. Check the Resend API key and verified sender domain.')
+}
+
+async function resolvePendingUser(admin, email, purpose, fallbackUserId) {
+  if (purpose === 'signup') {
+    try {
+      const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      if (error) return fallbackUserId ? { id: fallbackUserId } : null
+      const user = data?.users?.find((item) => normalizedEmail(item.email) === normalizedEmail(email))
+      if (!user) return fallbackUserId ? { id: fallbackUserId } : null
+      return user
+    } catch {
+      return fallbackUserId ? { id: fallbackUserId } : null
+    }
+  }
+
+  const { data, error } = await admin.from('members').select('auth_user_id').eq('email', email).maybeSingle()
+  if (error || !data?.auth_user_id) return fallbackUserId ? { id: fallbackUserId } : null
+  return { id: data.auth_user_id }
 }
 
 function createAdminClient(url, serviceRoleKey) {
@@ -156,9 +180,15 @@ export default async function handler(req, res) {
 
   if (action === 'resend') {
     const saved = decryptPayload(getCookie(req, COOKIE_NAME), serviceRoleKey)
-    if (!saved || saved.email !== email || saved.purpose !== purpose || saved.expiresAt < Date.now()) {
-      return json(res, 200, { ok: true })
-    }
+    const hasSavedCode = saved && saved.email === email && saved.purpose === purpose
+    const needsRefresh = !hasSavedCode || saved.expiresAt < Date.now()
+
+    const user = needsRefresh
+      ? (await resolvePendingUser(admin, email, purpose, saved?.userId))
+      : { id: saved.userId }
+
+    if (!user) return json(res, 200, { ok: true })
+
     let allowed
     try {
       allowed = await checkSendLimit(admin, purpose, email)
@@ -166,10 +196,20 @@ export default async function handler(req, res) {
       return json(res, 503, { error: error.message })
     }
     if (!allowed) return json(res, 429, { error: 'Please wait a minute before requesting another code.' })
+
+    const code = generateVerificationCode(saved?.code)
+    const payload = {
+      email,
+      purpose,
+      code,
+      userId: user.id,
+      attempts: 0,
+      expiresAt: Date.now() + CODE_TTL_SECONDS * 1000,
+    }
+
     try {
-      await sendWithResend({ email, code: saved.code, purpose, apiKey: resendApiKey, from: sender })
-      saved.attempts = 0
-      setCodeCookie(req, res, saved, serviceRoleKey)
+      await sendWithResend({ email, code, purpose, apiKey: resendApiKey, from: sender })
+      setCodeCookie(req, res, payload, serviceRoleKey)
       return json(res, 200, { ok: true })
     } catch (error) {
       return json(res, 502, { error: error.message })
@@ -178,7 +218,11 @@ export default async function handler(req, res) {
 
   if (action === 'verify') {
     const saved = decryptPayload(getCookie(req, COOKIE_NAME), serviceRoleKey)
-    if (!saved || saved.email !== email || saved.purpose !== purpose || saved.expiresAt < Date.now()) {
+    if (!saved || saved.email !== email || saved.purpose !== purpose) {
+      clearCodeCookie(req, res)
+      return json(res, 400, { error: 'This code expired. Request a new one.' })
+    }
+    if (saved.expiresAt < Date.now()) {
       clearCodeCookie(req, res)
       return json(res, 400, { error: 'This code expired. Request a new one.' })
     }
@@ -197,8 +241,9 @@ export default async function handler(req, res) {
       if (confirmError) return json(res, 502, { error: 'Could not confirm the account. Please try the code again.' })
     }
 
+    const verificationType = purpose === 'signup' ? 'magiclink' : 'recovery'
     const { data, error } = await admin.auth.admin.generateLink({
-      type: purpose === 'signup' ? 'magiclink' : 'recovery',
+      type: verificationType,
       email,
     })
     if (error || !data?.properties?.hashed_token) {
@@ -206,7 +251,7 @@ export default async function handler(req, res) {
     }
 
     clearCodeCookie(req, res)
-    return json(res, 200, { ok: true, tokenHash: data.properties.hashed_token })
+    return json(res, 200, { ok: true, tokenHash: data.properties.hashed_token, verificationType })
   }
 
   if ((action !== 'signup' && action !== 'recovery') || action !== purpose) {
@@ -248,7 +293,7 @@ export default async function handler(req, res) {
     generated = { user: { id: data.auth_user_id } }
   }
 
-  const code = String(randomInt(0, 1_000_000)).padStart(6, '0')
+  const code = generateVerificationCode()
 
   setCodeCookie(req, res, {
     email,
