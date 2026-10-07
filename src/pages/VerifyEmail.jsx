@@ -35,6 +35,7 @@ export default function VerifyEmail() {
   const navigate = useNavigate()
   const { verifyEmailCode, resendVerificationCode } = useAuth()
   const [email] = useState(() => location.state?.email || getPendingEmail())
+  const [password] = useState(() => location.state?.password || sessionStorage.getItem('nexus-pending-verification-password') || '')
   const [purpose] = useState(() => location.state?.purpose || new URLSearchParams(location.search).get('purpose') || getPendingPurpose())
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
@@ -61,10 +62,11 @@ export default function VerifyEmail() {
 
     setVerifying(true)
     try {
-      await verifyEmailCode(email, code, purpose)
+      await verifyEmailCode(email, code, purpose, password)
       clearPendingEmail()
       try {
         sessionStorage.removeItem(PENDING_PURPOSE_KEY)
+        sessionStorage.removeItem('nexus-pending-verification-password')
       } catch {
         // Verification succeeded; session storage is optional.
       }

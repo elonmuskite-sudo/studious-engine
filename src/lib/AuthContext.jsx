@@ -127,10 +127,16 @@ export function AuthProvider({ children }) {
     return { user: sessionUser, nexusId: sessionUser.nexusId }
   }, [])
 
-  const verifyEmailCode = useCallback(async (email, token, purpose = 'signup') => {
+  const verifyEmailCode = useCallback(async (email, token, purpose = 'signup', password = '') => {
     if (!isSupabaseConfigured()) throw new Error('Email verification is not configured.')
-    const { user: authUser } = await verifyEmailOtp(email, token, purpose)
-    if (!authUser) throw new Error('Supabase did not return a verified account.')
+    const authData = await verifyEmailOtp(email, token, purpose, password)
+    const authUser = authData?.user || authData?.session?.user
+    if (!authUser && purpose !== 'recovery') {
+      throw new Error('Supabase did not return a verified account.')
+    }
+    if (!authUser && purpose === 'recovery') {
+      return { ok: true }
+    }
     const profile = await getMemberProfile(authUser.id)
     const sessionUser = normalizeUser({
       ...profile,
