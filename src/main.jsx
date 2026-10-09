@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/query-client.js";
-import { client } from "./lib/appwrite.js";
+import "./lib/appwrite.js";
 import App from "./App.jsx";
 import "./index.css";
 

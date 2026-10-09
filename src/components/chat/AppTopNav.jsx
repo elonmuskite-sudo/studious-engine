@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useFilteredTabs, getActiveTabFromPath } from './AppBottomNav'
 
-export default function AppTopNav({ variant = 'admin', className = '' }) {
+export default function AppTopNav({ className = '' }) {
   const navigate = useNavigate()
   const location = useLocation()
   const tabs = useFilteredTabs()

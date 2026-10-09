@@ -7,12 +7,10 @@ import NotificationStack from '../components/chat/NotificationStack'
 import Header from '../components/Header'
 import { requestNotificationPermission, showSystemNotification } from '../lib/notifications'
 import { startRealtimeListeners, stopRealtimeListeners } from '../lib/persistence'
-import { useAuth } from '../lib/AuthContext'
 
 export default function ChatLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user } = useAuth()
 
   useEffect(() => {
     async function initNotifications() {

@@ -25,7 +25,9 @@ export default function FeedsPage() {
       if (stored) {
         try {
           return JSON.parse(stored);
-        } catch (e) {}
+        } catch {
+          // Corrupt stored state: fall back to fresh feeds below.
+        }
       }
     }
     return getFeeds();
@@ -448,7 +450,7 @@ export default function FeedsPage() {
                 <div>
                   <h3 className="font-bold text-foreground text-lg">Comments</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    On {activeCommentFeed.userName}'s post
+                    On {activeCommentFeed.userName}&apos;s post
                   </p>
                 </div>
                 <button 
@@ -479,7 +481,7 @@ export default function FeedsPage() {
                           {comment.reactions && Object.values(comment.reactions).some(count => count > 0) && (
                             <div className="absolute -bottom-2 right-3 flex items-center gap-1 bg-card border border-border px-1.5 py-0.5 rounded-full shadow-sm text-xs">
                               {Object.entries(comment.reactions)
-                                .filter(([_, count]) => count > 0)
+                                .filter(([, count]) => count > 0)
                                 .map(([emoji, count]) => (
                                   <span key={emoji} className="flex items-center gap-0.5 select-none">
                                     <span>{emoji}</span>
