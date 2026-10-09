@@ -48,6 +48,22 @@ export default function Login() {
       const destination = result?.user?.role === 'admin' ? '/admin' : '/app'
       navigate(destination)
     } catch (err) {
+      if (err?.code === 'email_not_confirmed' || /email not confirmed/i.test(err?.message || '')) {
+        navigate('/verify-email', {
+          replace: true,
+          state: {
+            email: email.trim().toLowerCase(),
+            purpose: 'signup',
+            password,
+            notice: 'Please verify your email before signing in. Use Resend code if you need a new one.',
+          },
+        })
+        return
+      }
+      if (err?.code === 'invalid_credentials' || /invalid login credentials/i.test(err?.message || '')) {
+        setError('Incorrect email or password.')
+        return
+      }
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
