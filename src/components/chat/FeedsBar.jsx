@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import Avatar from './Avatar';
 import { UserIcon } from '@heroicons/react/24/solid';
 import { getFeeds } from '../../data/mockFeeds';
 

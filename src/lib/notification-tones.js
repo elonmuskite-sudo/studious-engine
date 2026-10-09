@@ -172,6 +172,7 @@ export async function playNotificationTone(toneId = 'chime', volume = 0.5) {
       await ctx.resume()
     }
   } catch {
+    // Resume can be rejected without a user gesture; still attempt playback.
   }
 
   const tone = TONES[toneId] || TONES.chime

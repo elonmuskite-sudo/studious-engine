@@ -1,8 +1,6 @@
-import { useNavigate } from 'react-router-dom'
 import { PlusIcon } from '@heroicons/react/24/solid'
 
 export default function Home() {
-  const navigate = useNavigate()
 
   return (
     <div className="flex-1 flex items-center justify-center bg-background p-4 md:p-8">

@@ -30,7 +30,7 @@ const platforms = [
 ]
 
 export default function AuthLanding() {
-  const { theme } = useTheme()
+  useTheme()
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-all pb-24 md:pb-0">
@@ -60,7 +60,7 @@ export default function AuthLanding() {
           </div>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              {features.map((feature, index) => {
+              {features.map((feature) => {
                 const Icon = feature.icon
                 return (
                   <div key={feature.title} className="float-card rounded-2xl border border-border bg-card p-4 shadow-sm backdrop-blur">

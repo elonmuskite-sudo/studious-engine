@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 
 const SettingsContext = createContext()
 
@@ -26,6 +26,7 @@ export function SettingsProvider({ children }) {
       try {
         window.localStorage.setItem(key, JSON.stringify(value))
       } catch {
+        // Storage may be unavailable (private mode / quota); settings stay in memory.
       }
     }
   }, [settings])
