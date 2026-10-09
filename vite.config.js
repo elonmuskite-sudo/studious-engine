@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
@@ -11,7 +11,28 @@ if (hasBase44Proxy) {
   base44Plugin = (await import("@base44/vite-plugin")).default;
 }
 
-export default defineConfig({
+// The browser client must target the same Supabase project as the /api functions,
+// which use the integration-managed SUPABASE_URL. Prefer those values over any
+// stale VITE_SUPABASE_* overrides so sign-in and email-code flows never split.
+function resolveSupabaseClientEnv(mode) {
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
+    url: env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || "",
+    anonKey:
+      env.SUPABASE_ANON_KEY ||
+      env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      env.VITE_SUPABASE_ANON_KEY ||
+      "",
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const supabaseClientEnv = resolveSupabaseClientEnv(mode);
+  return {
+  define: {
+    "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(supabaseClientEnv.url),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(supabaseClientEnv.anonKey),
+  },
   plugins: [
     react(),
     ...(base44Plugin ? [base44Plugin()] : []),
@@ -49,4 +70,5 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  };
 });
